@@ -1,0 +1,5 @@
+segmented_image.png
+*.pyc
+*.pt
+venv
+
