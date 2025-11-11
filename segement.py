@@ -75,8 +75,8 @@ def segment_class_on_image(
     # 5) نعمل combine للـ masks دي (ممكن max أو sum، max أبسط)
     combined_mask = masks.max(0).values  # (H, W)
 
-    # switch logic to only object exist and background is black
-    combined_mask = 1 - combined_mask
+    # switch logic to only object exist and background is black, uncomment this for the switch
+    # combined_mask = 1 - combined_mask
 
     # 6) نعمل threshold ونطلع ماسك باينري
     binary_mask = (combined_mask > mask_thresh).float()  # (H, W)
