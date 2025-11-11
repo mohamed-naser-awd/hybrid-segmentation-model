@@ -182,7 +182,6 @@ train/
 ├── network.py          # Main model architecture
 ├── backbone.py         # DarkNet53 backbone
 ├── fpn.py             # Feature Pyramid Network
-├── transformer.py     # Transformer components (placeholder)
 ├── dataaset.py        # Dataset loading
 ├── train.py           # Training script
 ├── test.py            # Testing script
@@ -206,7 +205,6 @@ train/
 
 ## Future Improvements
 
-- Complete the `TransformerLayer` implementation in `transformer.py`
 - Add support for multi-class segmentation
 - Implement proper training loop with validation
 - Add data augmentation
