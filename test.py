@@ -8,13 +8,13 @@ from datetime import datetime
 # 2. أنشئ نسخة فاضية بنفس config
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = HybirdSegmentationAlgorithm(num_classes=1, d_model=384).to(device)
+model = model.eval()
 
 
 # 3. حمّل الـ state_dict
 model.load_state_dict(torch.load("hybrid_seg_single_overfit.pt", map_location="cuda"))
 
 # 4. خليه في وضع eval
-model.eval()
 
 _image, mask = load_single_sample(
     image_path="export/image.png", mask_path="export/mask.png"
@@ -26,6 +26,7 @@ def test_model(image: torch.Tensor):
     start_time = datetime.now()
 
     outputs = model(image)
+
     model_end_time = datetime.now()
     print(f"Model Time taken: {(model_end_time - start_time).total_seconds()} seconds")
     print(outputs["pred_logits"].shape, "is the shape of the pred_logits")
@@ -40,8 +41,7 @@ def test_model(image: torch.Tensor):
 
 
 if __name__ == "__main__":
-    test_model(_image)
-    test_model(_image)
-    test_model(_image)
-    test_model(_image)
-    test_model(_image)
+    with torch.no_grad():
+        with torch.cuda.amp.autocast():
+            test_model(_image)
+            test_model(_image)
