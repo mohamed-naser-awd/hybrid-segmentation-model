@@ -1,4 +1,5 @@
 from torch import nn
+from utils import profile_block
 
 
 class ResidualBlock(nn.Module):
@@ -70,10 +71,10 @@ class DarkNet53(nn.Module):
         )
 
         self.c1 = ResidualStage(1, 32, 64)
-        self.c2 = ResidualStage(2, 64, 128)
-        self.c3 = ResidualStage(8, 128, 256)
-        self.c4 = ResidualStage(8, 256, 512)
-        self.c5 = ResidualStage(4, 512, 1024)
+        self.c2 = ResidualStage(1, 64, 128)
+        self.c3 = ResidualStage(2, 128, 256)
+        self.c4 = ResidualStage(2, 256, 512)
+        self.c5 = ResidualStage(1, 512, 1024)
 
     def forward(self, x):
         x = self.stem(x)

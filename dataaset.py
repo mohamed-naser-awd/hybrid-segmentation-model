@@ -4,6 +4,36 @@ from torchvision.datasets import OxfordIIITPet
 import torchvision.transforms.functional as TF
 from torchvision.transforms import InterpolationMode
 import numpy as np
+import os
+from PIL import Image
+
+
+class P3M10kDataset(Dataset):
+    def __init__(self, img_dir, mask_dir, size=640):
+        self.img_dir = img_dir
+        self.mask_dir = mask_dir
+        self.size = size
+        self.images = sorted(os.listdir(img_dir))
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        img_name = self.images[idx]
+
+        img = Image.open(os.path.join(self.img_dir, img_name)).convert("RGB")
+        try:
+            mask = Image.open(os.path.join(self.mask_dir, img_name.replace("jpg", "png"))).convert("L")
+        except FileNotFoundError:
+            mask = Image.open(os.path.join(self.mask_dir, img_name)).convert("L")
+
+        img = TF.resize(img, (self.size, self.size), interpolation=InterpolationMode.BILINEAR)
+        mask = TF.resize(mask, (self.size, self.size), interpolation=InterpolationMode.NEAREST)
+
+        img = TF.to_tensor(img)
+        mask = torch.from_numpy(np.array(mask)).long()  # لو multi-class
+
+        return img, mask
 
 
 class PetSegmentationDataset(Dataset):

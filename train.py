@@ -51,7 +51,7 @@ def train_on_single_image(
 
     # ---- 2) جهّز الموديل ----
     num_classes = 1  # foreground واحدة
-    model = HybirdSegmentationAlgorithm(num_classes=num_classes, d_model=384).to(device)
+    model = HybirdSegmentationAlgorithm(num_classes=num_classes).to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
 
@@ -63,8 +63,7 @@ def train_on_single_image(
         model.train()
 
         outputs = model(image)
-        pred_logits = outputs["pred_logits"]   # (1, Q, num_classes+1) = (1, 100, 2)
-        pred_masks = outputs["pred_masks"]     # (1, Q, H, W) = (1, 100, 640, 640)
+        pred_logits, pred_masks = outputs
 
         B, Q, C1 = pred_logits.shape
         _, _, H, W = pred_masks.shape

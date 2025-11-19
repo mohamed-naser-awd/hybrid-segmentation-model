@@ -52,8 +52,7 @@ def segment_class_on_image(
       - binary_mask: الماسك الباينري (H, W) كـ Tensor
     """
     # هنشتغل على أول صورة بس عشان البساطة
-    pred_logits = outputs["pred_logits"][0]  # (Q, num_classes+1)
-    pred_masks = outputs["pred_masks"][0]  # (Q, H, W)
+    pred_logits, pred_masks = outputs
 
     # 1) نجيب probabilities للكلاسات (ونشيل background آخر channel)
     class_probs = pred_logits.softmax(-1)[..., :-1]  # (Q, num_classes)
