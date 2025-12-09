@@ -1,33 +1,18 @@
 import os
-import time
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
-from torch.cuda.amp import autocast, GradScaler
 
 from network import HybirdSegmentationAlgorithm
 from dataaset import P3MMemmapDataset
 from utils import profile_block
+import time
 
 
-def forward_step(
-    model,
-    imgs,
-    masks,
-    cls_criterion,
-    mask_criterion,
-    num_classes,
-    device,
+def train_step(
+    model, imgs, masks, optimizer, cls_criterion, mask_criterion, num_classes, device
 ):
-    """
-    يعمل:
-    - تجهيز الداتا (imgs, masks)
-    - forward للموديل
-    - حساب ال losses
-    ويرجع: loss, cls_loss, mask_loss
-    """
-
-    imgs = imgs.to(device, non_blocking=True)  # (B, 3, H, W)
+    imgs = imgs.to(device)  # (B, 3, H, W)
 
     # ----- تجهيز الماسكات -----
     # شكل الماسك من الداتاسيت ممكن يكون:
@@ -39,9 +24,11 @@ def forward_step(
             # لو multi-channel ناخد أول قناة (أو ممكن نعمل mean)
             masks = masks[:, 0, :, :]  # (B, H, W)
 
-    masks = masks.to(device, non_blocking=True)
+    masks = masks.to(device)
 
-    # ===== Forward =====
+    optimizer.zero_grad()
+
+
     pred_logits, pred_masks = model(imgs)
     # pred_logits: (B, Q, C1) , C1 = num_classes + 1
     # pred_masks : (B, Q, H, W)
@@ -80,16 +67,14 @@ def forward_step(
 
     loss = cls_loss + mask_loss  # ممكن تعمل weights لو حابب
 
+    profile_block("backward", loss.backward)
+    profile_block("optimizer step", optimizer.step)
+
     return loss, cls_loss, mask_loss
 
 
 def train_p3m10k(
     model: HybirdSegmentationAlgorithm,
-    train_img_dir: str = "P3M-10k/train/blurred_image",
-    train_mask_dir: str = "P3M-10k/train/mask",
-    val_img_dir: str = "P3M-10k/validation/P3M-500-P/blurred_image",
-    val_mask_dir: str = "P3M-10k/validation/P3M-500-P/mask",
-    image_size: int = 640,
     num_epochs: int = 50,
     batch_size: int = 20,
     lr: float = 1e-4,
@@ -101,16 +86,6 @@ def train_p3m10k(
     # ==========================
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
-
-    model = model.to(device)
-
-    if device == "cuda":
-        torch.backends.cudnn.benchmark = True
-        torch.backends.cudnn.enabled = True
-        try:
-            torch.set_float32_matmul_precision("high")
-        except AttributeError:
-            pass
 
     # ==========================
     # 1) الـ Dataset & DataLoader
@@ -127,15 +102,14 @@ def train_p3m10k(
         N=500,
     )
 
-    # خليتها False عشان موضوع الـ RAM اللي عندك
-    pin = False
+    pin = True if device == "cuda" else False
 
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
-        pin_memory=pin,
+        pin_memory=False,
     )
 
     val_loader = DataLoader(
@@ -143,11 +117,11 @@ def train_p3m10k(
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=pin,
+        pin_memory=False,
     )
 
     # ==========================
-    # 2) الموديل + اللوس + الأوبتيميزر + AMP
+    # 2) الموديل + اللوس + الأوبتيميزر
     # ==========================
     # عندنا كلاس واحد (foreground) + background كـ "no-object"
     num_classes = 1
@@ -158,8 +132,6 @@ def train_p3m10k(
     cls_criterion = nn.CrossEntropyLoss()
     # masks: BCEWithLogits على الماسكات
     mask_criterion = nn.BCEWithLogitsLoss()
-
-    scaler = GradScaler()
 
     best_val_loss = float("inf")
 
@@ -175,28 +147,20 @@ def train_p3m10k(
         running_train_mask = 0.0
 
         print(f"Training on {len(train_loader)} batches")
-
         for step, (imgs, masks) in enumerate(train_loader, start=1):
-            optimizer.zero_grad(set_to_none=True)
-
-            # ----- Forward + loss (AMP) -----
-            with autocast():
+            with torch.cuda.amp.autocast():
                 loss, cls_loss, mask_loss = profile_block(
-                    "forward step",
-                    forward_step,
+                    "train step",
+                    train_step,
                     model,
                     imgs,
                     masks,
+                    optimizer,
                     cls_criterion,
                     mask_criterion,
                     num_classes,
                     device,
                 )
-
-            # ----- Backward + optimizer step (scaled) -----
-            profile_block("backward", scaler.scale(loss).backward)
-            profile_block("optimizer step", scaler.step, optimizer)
-            scaler.update()
 
             running_train_loss += loss.item()
             running_train_cls += cls_loss.item()
@@ -294,5 +258,5 @@ if __name__ == "__main__":
     torch.multiprocessing.set_start_method("spawn", force=True)
 
     model = HybirdSegmentationAlgorithm(num_classes=1, net_type="18")
-    model = model.to("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to("cuda")
     train_p3m10k(model, save_path="hybrid_seg_p3m10k_dark18.pt")
