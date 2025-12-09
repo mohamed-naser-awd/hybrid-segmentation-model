@@ -83,7 +83,7 @@ def train_p3m10k(
     val_mask_dir: str = "P3M-10k/validation/P3M-500-P/mask",
     image_size: int = 640,
     num_epochs: int = 20,
-    batch_size: int = 25,
+    batch_size: int = 20,
     lr: float = 1e-4,
     num_workers: int = 4,
     save_path: str = "hybrid_seg_p3m10k.pt",
