@@ -79,6 +79,7 @@ class P3MMemmapDataset(Dataset):
             )
 
     def __getitem__(self, idx):
+        return self.get_item(idx)
         return profile_block("get p3m10k item", self.get_item, idx)
 
     def get_item(self, idx):
