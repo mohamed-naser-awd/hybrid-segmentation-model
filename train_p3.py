@@ -4,7 +4,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from network import HybirdSegmentationAlgorithm
-from dataaset import P3M10kDataset
+from dataaset import P3MMemmapDataset
 from utils import profile_block
 
 
@@ -94,19 +94,10 @@ def train_p3m10k(
     # ==========================
     # 1) الـ Dataset & DataLoader
     # ==========================
-    train_dataset = P3M10kDataset(
-        img_dir=train_img_dir,
-        mask_dir=train_mask_dir,
-        device=device,
-        size=image_size,
-    )
+    train_dataset = P3MMemmapDataset(mmap_path="dataset/p3m_train_blurred_640_fp16.mmap", mask_mmap_path="dataset/p3m_train_blurred_640_masks_fp16.mmap", N=9421)
 
-    val_dataset = P3M10kDataset(
-        img_dir=val_img_dir,
-        mask_dir=val_mask_dir,
-        device=device,
-        size=image_size,
-    )
+    val_dataset = P3MMemmapDataset(mmap_path="dataset/p3m_val_blurred_640_fp16.mmap", mask_mmap_path="dataset/p3m_val_blurred_640_masks_fp16.mmap", N=500)
+
 
     pin = True if device == "cuda" else False
 
