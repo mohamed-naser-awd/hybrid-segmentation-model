@@ -5,16 +5,82 @@ from torch.utils.data import DataLoader
 
 from network import HybirdSegmentationAlgorithm
 from dataaset import P3M10kDataset
+from utils import profile_block
 
+
+def train_step(model, imgs, masks, optimizer, cls_criterion, mask_criterion, num_classes, device):
+    imgs = imgs.to(device)  # (B, 3, H, W)
+
+    # ----- تجهيز الماسكات -----
+    # شكل الماسك من الداتاسيت ممكن يكون:
+    # (B, H, W) أو (B, 1, H, W) أو حتى (B, C, H, W)
+    if masks.dim() == 4:
+        if masks.size(1) == 1:
+            masks = masks.squeeze(1)  # (B, H, W)
+        else:
+            # لو multi-channel ناخد أول قناة (أو ممكن نعمل mean)
+            masks = masks[:, 0, :, :]  # (B, H, W)
+
+    masks = masks.to(device).float()
+
+    # لو الماسك 0/255 نخليه 0/1
+    if masks.max() > 1.0:
+        masks = (masks > 0).float()
+
+    optimizer.zero_grad()
+
+    pred_logits, pred_masks = model(imgs)
+    # pred_logits: (B, Q, C1) , C1 = num_classes + 1
+    # pred_masks : (B, Q, H, W)
+
+    B, Q, C1 = pred_logits.shape
+    _, Qm, H, W = pred_masks.shape
+    assert Q == Qm, "Mismatch between Q of logits and masks!"
+
+    # ===== Targets لكل Batch =====
+    # 1) الكلاسات للـ queries
+    # index الأخير = background (no-object)
+    target_classes = torch.full(
+        (B, Q),
+        fill_value=num_classes,  # background index
+        dtype=torch.long,
+        device=device,
+    )
+    # نخلي query 0 هو الـ object الحقيقي (الوش)
+    target_classes[:, 0] = 0
+
+    # 2) الماسكات
+    target_masks = torch.zeros(
+        (B, Q, H, W),
+        dtype=torch.float32,
+        device=device,
+    )
+    target_masks[:, 0, :, :] = masks  # الماسك الحقيقي في query 0
+
+    # ===== losses =====
+    cls_loss = cls_criterion(
+        pred_logits.view(B * Q, C1),
+        target_classes.view(B * Q),
+    )
+
+    mask_loss = mask_criterion(pred_masks, target_masks)
+
+    loss = cls_loss + mask_loss  # ممكن تعمل weights لو حابب
+
+    profile_block("backward", loss.backward)
+    profile_block("optimizer step", optimizer.step)
+
+    return loss, cls_loss, mask_loss
 
 def train_p3m10k(
+    model: HybirdSegmentationAlgorithm,
     train_img_dir: str = "P3M-10k/train/blurred_image",
     train_mask_dir: str = "P3M-10k/train/mask",
     val_img_dir: str = "P3M-10k/validation/P3M-500-P/blurred_image",
     val_mask_dir: str = "P3M-10k/validation/P3M-500-P/mask",
     image_size: int = 640,
     num_epochs: int = 20,
-    batch_size: int = 4,
+    batch_size: int = 20,
     lr: float = 1e-4,
     num_workers: int = 4,
     save_path: str = "hybrid_seg_p3m10k.pt",
@@ -31,12 +97,14 @@ def train_p3m10k(
     train_dataset = P3M10kDataset(
         img_dir=train_img_dir,
         mask_dir=train_mask_dir,
+        device=device,
         size=image_size,
     )
 
     val_dataset = P3M10kDataset(
         img_dir=val_img_dir,
         mask_dir=val_mask_dir,
+        device=device,
         size=image_size,
     )
 
@@ -63,7 +131,6 @@ def train_p3m10k(
     # ==========================
     # عندنا كلاس واحد (foreground) + background كـ "no-object"
     num_classes = 1
-    model = HybirdSegmentationAlgorithm(num_classes=num_classes).to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
 
@@ -85,66 +152,8 @@ def train_p3m10k(
         running_train_mask = 0.0
 
         for step, (imgs, masks) in enumerate(train_loader, start=1):
-            imgs = imgs.to(device)  # (B, 3, H, W)
-
-            # ----- تجهيز الماسكات -----
-            # شكل الماسك من الداتاسيت ممكن يكون:
-            # (B, H, W) أو (B, 1, H, W) أو حتى (B, C, H, W)
-            if masks.dim() == 4:
-                if masks.size(1) == 1:
-                    masks = masks.squeeze(1)       # (B, H, W)
-                else:
-                    # لو multi-channel ناخد أول قناة (أو ممكن نعمل mean)
-                    masks = masks[:, 0, :, :]      # (B, H, W)
-
-            masks = masks.to(device).float()
-
-            # لو الماسك 0/255 نخليه 0/1
-            if masks.max() > 1.0:
-                masks = (masks > 0).float()
-
-            optimizer.zero_grad()
-
-            pred_logits, pred_masks = model(imgs)
-            # pred_logits: (B, Q, C1) , C1 = num_classes + 1
-            # pred_masks : (B, Q, H, W)
-
-            B, Q, C1 = pred_logits.shape
-            _, Qm, H, W = pred_masks.shape
-            assert Q == Qm, "Mismatch between Q of logits and masks!"
-
-            # ===== Targets لكل Batch =====
-            # 1) الكلاسات للـ queries
-            # index الأخير = background (no-object)
-            target_classes = torch.full(
-                (B, Q),
-                fill_value=num_classes,   # background index
-                dtype=torch.long,
-                device=device,
-            )
-            # نخلي query 0 هو الـ object الحقيقي (الوش)
-            target_classes[:, 0] = 0
-
-            # 2) الماسكات
-            target_masks = torch.zeros(
-                (B, Q, H, W),
-                dtype=torch.float32,
-                device=device,
-            )
-            target_masks[:, 0, :, :] = masks  # الماسك الحقيقي في query 0
-
-            # ===== losses =====
-            cls_loss = cls_criterion(
-                pred_logits.view(B * Q, C1),
-                target_classes.view(B * Q),
-            )
-
-            mask_loss = mask_criterion(pred_masks, target_masks)
-
-            loss = cls_loss + mask_loss  # ممكن تعمل weights لو حابب
-
-            loss.backward()
-            optimizer.step()
+            loss, cls_loss, mask_loss = profile_block("train step", train_step, model, imgs, masks, optimizer, cls_criterion, mask_criterion, num_classes, device)
+            raise Exception("Stop here")
 
             running_train_loss += loss.item()
             running_train_cls += cls_loss.item()
@@ -236,4 +245,7 @@ def train_p3m10k(
 
 
 if __name__ == "__main__":
-    train_p3m10k()
+
+    model = HybirdSegmentationAlgorithm(num_classes=1, net_type="18")
+    model = model.to("cuda")
+    train_p3m10k(model, save_path="hybrid_seg_p3m10k_dark18.pt")

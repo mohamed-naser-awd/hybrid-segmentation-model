@@ -1,29 +1,25 @@
-# 1. أنشئ نفس الكلاس بالظبط (HybirdSegmentationAlgorithm)
 from network import HybirdSegmentationAlgorithm
 import torch
-from train import load_single_sample
 from segement import segment_class_on_image, save_segmented_image
-from datetime import datetime
 from PIL import Image
 import torchvision.transforms.functional as TF
 from torchvision.transforms import InterpolationMode
-import numpy as np
+from utils import profile_block
 
+
+
+def test_model_inference(model, image: torch.Tensor):
+
+    outputs = model(image)
+
+    segmented_image, binary_mask = profile_block("segment_class_on_image", segment_class_on_image, outputs, image, class_id=0)
+    return segmented_image, binary_mask
 
 
 def test_model(image: torch.Tensor):
     image = image.unsqueeze(0).to(device)  # (1, 3, 640, 640)
 
-    start_time = datetime.now()
-    outputs = model(image)
-    model_end_time = datetime.now()
-
-    print(f"Model Time taken: {(model_end_time - start_time).total_seconds()} seconds")
-
-    segmented_image, binary_mask = segment_class_on_image(outputs, image, class_id=0)
-
-    end_time = datetime.now()
-    print(f"Time taken: {(end_time - start_time).total_seconds()} seconds")
+    segmented_image, binary_mask = profile_block("test_model_inference", test_model_inference, model, image)
 
     if segmented_image is not None:
         save_segmented_image(segmented_image, "segmented_image.png")
@@ -39,13 +35,13 @@ if __name__ == "__main__":
             model = HybirdSegmentationAlgorithm(num_classes=1).to(device)
             model = model.eval()
 
-            model.load_state_dict(torch.load("hybrid_seg_p3m10k.pt", map_location="cuda"))
+            model.load_state_dict(torch.load("hybrid_seg_single_overfit.pt", map_location="cuda"))
 
             for module in model.modules():
                 if hasattr(module, "fuse"):
                     module.fuse()
 
-            img = Image.open("test.jpg").convert("RGB")
+            img = Image.open("1755856419306.png").convert("RGB")
             img = TF.resize(
                 img,
                 (640, 640),
@@ -53,4 +49,5 @@ if __name__ == "__main__":
             )
             img_tensor = TF.to_tensor(img)  # (3, H, W) في الرينج [0,1]
 
-            test_model(img_tensor)
+            profile_block("test model", test_model, img_tensor)
+            profile_block("test model", test_model, img_tensor)

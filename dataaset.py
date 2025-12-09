@@ -6,10 +6,11 @@ from torchvision.transforms import InterpolationMode
 import numpy as np
 import os
 from PIL import Image
+from utils import profile_block
 
 
 class P3M10kDataset(Dataset):
-    def __init__(self, img_dir, mask_dir, size=640):
+    def __init__(self, img_dir, mask_dir, size=640, **kw):
         self.img_dir = img_dir
         self.mask_dir = mask_dir
         self.size = size
@@ -18,22 +19,76 @@ class P3M10kDataset(Dataset):
     def __len__(self):
         return len(self.images)
 
-    def __getitem__(self, idx):
+    def get_image(self, idx):
         img_name = self.images[idx]
 
         img = Image.open(os.path.join(self.img_dir, img_name)).convert("RGB")
         try:
-            mask = Image.open(os.path.join(self.mask_dir, img_name.replace("jpg", "png"))).convert("L")
+            mask = Image.open(
+                os.path.join(self.mask_dir, img_name.replace("jpg", "png"))
+            ).convert("L")
         except FileNotFoundError:
             mask = Image.open(os.path.join(self.mask_dir, img_name)).convert("L")
 
-        img = TF.resize(img, (self.size, self.size), interpolation=InterpolationMode.BILINEAR)
-        mask = TF.resize(mask, (self.size, self.size), interpolation=InterpolationMode.NEAREST)
+        img = TF.resize(
+            img, (self.size, self.size), interpolation=InterpolationMode.BILINEAR
+        )
+        mask = TF.resize(
+            mask, (self.size, self.size), interpolation=InterpolationMode.NEAREST
+        )
 
         img = TF.to_tensor(img)
         mask = torch.from_numpy(np.array(mask)).long()  # لو multi-class
 
         return img, mask
+
+    def __getitem__(self, idx):
+        return self.get_image(idx)
+        return profile_block("get p3m10k item", self.get_image, idx)
+
+class P3MMemmapDataset(Dataset):
+    def __init__(self, mmap_path, mask_mmap_path, N=None):
+        self.mmap_path = mmap_path
+        self.mask_mmap_path = mask_mmap_path
+        self.N = N
+
+        self.imgs = None
+        self.masks = None  # 👈 هنتفتح أول مرة فقط داخل worker
+
+    def _init_memmap(self):
+        C = 3
+        N = self.N
+        H = W = 640
+
+        if self.imgs is None:
+            self.imgs = np.memmap(
+                self.mmap_path,
+                dtype="float32",
+                mode="r",
+                shape=(N, C, H, W),
+            )
+
+            print(f"images path: {self.mmap_path}")
+            print(f"masks path: {self.mask_mmap_path}")
+
+            self.masks = np.memmap(
+                self.mask_mmap_path,
+                dtype="float32",
+                mode="r",
+                shape=(N, C, H, W),
+            )
+
+    def __getitem__(self, idx):
+        return profile_block("get p3m10k item", self.get_item, idx)
+
+    def get_item(self, idx):
+        self._init_memmap()  # <--- يتفتح لكل ووركر لوحده أول مرة
+        img = torch.from_numpy(self.imgs[idx])
+        mask = torch.from_numpy(self.masks[idx])
+        return img, mask
+
+    def __len__(self):
+        return self.N
 
 
 class PetSegmentationDataset(Dataset):
@@ -59,7 +114,7 @@ class PetSegmentationDataset(Dataset):
         return len(self.base_dataset)
 
     def __getitem__(self, idx):
-        image, seg = self.base_dataset[idx]   # image: PIL, seg: PIL mask (trimap)
+        image, seg = self.base_dataset[idx]  # image: PIL, seg: PIL mask (trimap)
 
         # --- resize image ---
         image = TF.resize(
@@ -84,4 +139,4 @@ class PetSegmentationDataset(Dataset):
 
         mask = torch.from_numpy(mask_np)  # (H, W), float32 {0,1}
 
-        return image, mask
+        return image.float(), mask.float()

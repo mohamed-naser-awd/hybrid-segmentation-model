@@ -6,6 +6,7 @@ class ResidualBlock(nn.Module):
     def __init__(self, in_channels, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
+        self.dropout = nn.Dropout2d(0.15)
         self.conv1 = nn.Conv2d(
             in_channels,
             in_channels // 2,
@@ -33,6 +34,7 @@ class ResidualBlock(nn.Module):
         x = self.activation(x)
         x = self.conv2(x)
         x = self.bn2(x)
+        x = self.dropout(x)
         return residual + x
 
 
@@ -43,6 +45,7 @@ class ResidualStage(nn.Module):
         super().__init__(*args, **kwargs)
 
         self.layers = nn.Sequential(
+            nn.Dropout(0.1),
             nn.Conv2d(
                 in_channels,
                 output_channels,
@@ -61,8 +64,8 @@ class ResidualStage(nn.Module):
         return x
 
 
-class DarkNet53(nn.Module):
-    def __init__(self, *args, **kwargs) -> None:
+class DarkNet(nn.Module):
+    def __init__(self, net_type: str = "18", *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.stem = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=3, padding=1, bias=False),
@@ -70,17 +73,23 @@ class DarkNet53(nn.Module):
             nn.LeakyReLU(0.1, inplace=True),
         )
 
+        stage_block_mapper = {
+            "18": {"4": 2, "5": 1},
+            "21": {"4": 2, "5": 2},
+            "24": {"4": 2, "5": 3},
+        }
+
         self.c1 = ResidualStage(1, 32, 64)
         self.c2 = ResidualStage(1, 64, 128)
         self.c3 = ResidualStage(2, 128, 256)
-        self.c4 = ResidualStage(2, 256, 512)
-        self.c5 = ResidualStage(1, 512, 1024)
+        self.c4 = ResidualStage(stage_block_mapper[net_type]["4"], 256, 512)
+        self.c5 = ResidualStage(stage_block_mapper[net_type]["5"], 512, 1024)
 
     def forward(self, x):
-        x = self.stem(x)
-        x = self.c1(x)
-        x = self.c2(x)
-        c3 = self.c3(x)
-        c4 = self.c4(c3)
-        c5 = self.c5(c4)
+        x = profile_block("stem", self.stem, x)
+        x = profile_block("c1", self.c1, x)
+        x = profile_block("c2", self.c2, x)
+        c3 = profile_block("c3", self.c3, x)
+        c4 = profile_block("c4", self.c4, c3)
+        c5 = profile_block("c5", self.c5, c4)
         return c3, c4, c5

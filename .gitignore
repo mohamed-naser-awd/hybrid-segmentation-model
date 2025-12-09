@@ -4,3 +4,6 @@ segmented_image.png
 venv
 P3M-10k
 p3m-10k_facemask
+*.mmap
+*.png
+wenv
