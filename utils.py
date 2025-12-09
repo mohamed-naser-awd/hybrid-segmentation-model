@@ -3,8 +3,8 @@ import torch
 
 
 def profile_block(name, func, *args, **kwargs):
-    out = func(*args, **kwargs)
-    return out
+    # out = func(*args, **kwargs)
+    # return out
 
     torch.cuda.synchronize()
     t0 = time.perf_counter()
