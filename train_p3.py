@@ -147,19 +147,18 @@ def train_p3m10k(
 
         print(f"Training on {len(train_loader)} batches")
         for step, (imgs, masks) in enumerate(train_loader, start=1):
-            with torch.cuda.amp.autocast():
-                loss, cls_loss, mask_loss = profile_block(
-                    "train step",
-                    train_step,
-                    model,
-                    imgs,
-                    masks,
-                    optimizer,
-                    cls_criterion,
-                    mask_criterion,
-                    num_classes,
-                    device,
-                )
+            loss, cls_loss, mask_loss = profile_block(
+                "train step",
+                train_step,
+                model,
+                imgs,
+                masks,
+                optimizer,
+                cls_criterion,
+                mask_criterion,
+                num_classes,
+                device,
+            )
 
             if step % 10 == 0:
                 print(f"Step {step} completed out of {len(train_loader)}")
@@ -260,5 +259,6 @@ if __name__ == "__main__":
     torch.multiprocessing.set_start_method("spawn", force=True)
 
     model = HybirdSegmentationAlgorithm(num_classes=1, net_type="18")
-    model = model.to("cuda")
-    train_p3m10k(model, save_path="hybrid_seg_p3m10k_dark18.pt")
+    with torch.cuda.amp.autocast():
+        model = model.to("cuda")
+        train_p3m10k(model, save_path="hybrid_seg_p3m10k_dark18.pt")
