@@ -28,8 +28,8 @@ def train_step(
 
     optimizer.zero_grad()
 
-    with torch.cuda.amp.autocast():
-        pred_logits, pred_masks = model(imgs)
+
+    pred_logits, pred_masks = model(imgs)
     # pred_logits: (B, Q, C1) , C1 = num_classes + 1
     # pred_masks : (B, Q, H, W)
 
@@ -153,18 +153,19 @@ def train_p3m10k(
 
         print(f"Training on {len(train_loader)} batches")
         for step, (imgs, masks) in enumerate(train_loader, start=1):
-            loss, cls_loss, mask_loss = profile_block(
-                "train step",
-                train_step,
-                model,
-                imgs,
-                masks,
-                optimizer,
-                cls_criterion,
-                mask_criterion,
-                num_classes,
-                device,
-            )
+            with torch.cuda.amp.autocast():
+                loss, cls_loss, mask_loss = profile_block(
+                    "train step",
+                    train_step,
+                    model,
+                    imgs,
+                    masks,
+                    optimizer,
+                    cls_criterion,
+                    mask_criterion,
+                    num_classes,
+                    device,
+                )
 
             running_train_loss += loss.item()
             running_train_cls += cls_loss.item()
