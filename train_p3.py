@@ -144,7 +144,6 @@ def train_p3m10k(
 
         for step, (imgs, masks) in enumerate(train_loader, start=1):
             loss, cls_loss, mask_loss = profile_block("train step", train_step, model, imgs, masks, optimizer, cls_criterion, mask_criterion, num_classes, device)
-            raise Exception("Stop here")
 
             running_train_loss += loss.item()
             running_train_cls += cls_loss.item()
