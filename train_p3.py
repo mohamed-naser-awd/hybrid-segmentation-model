@@ -8,7 +8,9 @@ from dataaset import P3MMemmapDataset
 from utils import profile_block
 
 
-def train_step(model, imgs, masks, optimizer, cls_criterion, mask_criterion, num_classes, device):
+def train_step(
+    model, imgs, masks, optimizer, cls_criterion, mask_criterion, num_classes, device
+):
     imgs = imgs.to(device)  # (B, 3, H, W)
 
     # ----- تجهيز الماسكات -----
@@ -72,6 +74,7 @@ def train_step(model, imgs, masks, optimizer, cls_criterion, mask_criterion, num
 
     return loss, cls_loss, mask_loss
 
+
 def train_p3m10k(
     model: HybirdSegmentationAlgorithm,
     train_img_dir: str = "P3M-10k/train/blurred_image",
@@ -94,10 +97,17 @@ def train_p3m10k(
     # ==========================
     # 1) الـ Dataset & DataLoader
     # ==========================
-    train_dataset = P3MMemmapDataset(mmap_path="dataset/p3m_train_blurred_640_fp16.mmap", mask_mmap_path="dataset/p3m_train_blurred_640_masks_fp16.mmap", N=9421)
+    train_dataset = P3MMemmapDataset(
+        mmap_path="dataset/p3m_train_blurred_640_fp16.mmap",
+        mask_mmap_path="dataset/p3m_train_blurred_640_masks_fp16.mmap",
+        N=9421,
+    )
 
-    val_dataset = P3MMemmapDataset(mmap_path="dataset/p3m_val_blurred_640_fp16.mmap", mask_mmap_path="dataset/p3m_val_blurred_640_masks_fp16.mmap", N=500)
-
+    val_dataset = P3MMemmapDataset(
+        mmap_path="dataset/p3m_val_blurred_640_fp16.mmap",
+        mask_mmap_path="dataset/p3m_val_blurred_640_masks_fp16.mmap",
+        N=500,
+    )
 
     pin = True if device == "cuda" else False
 
@@ -106,7 +116,7 @@ def train_p3m10k(
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
-        pin_memory=pin,
+        pin_memory=False,
     )
 
     val_loader = DataLoader(
@@ -114,7 +124,7 @@ def train_p3m10k(
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=pin,
+        pin_memory=False,
     )
 
     # ==========================
@@ -143,7 +153,18 @@ def train_p3m10k(
         running_train_mask = 0.0
 
         for step, (imgs, masks) in enumerate(train_loader, start=1):
-            loss, cls_loss, mask_loss = profile_block("train step", train_step, model, imgs, masks, optimizer, cls_criterion, mask_criterion, num_classes, device)
+            loss, cls_loss, mask_loss = profile_block(
+                "train step",
+                train_step,
+                model,
+                imgs,
+                masks,
+                optimizer,
+                cls_criterion,
+                mask_criterion,
+                num_classes,
+                device,
+            )
 
             running_train_loss += loss.item()
             running_train_cls += cls_loss.item()
