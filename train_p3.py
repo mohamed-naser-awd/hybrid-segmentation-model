@@ -28,7 +28,6 @@ def train_step(
 
     optimizer.zero_grad()
 
-
     pred_logits, pred_masks = model(imgs)
     # pred_logits: (B, Q, C1) , C1 = num_classes + 1
     # pred_masks : (B, Q, H, W)
@@ -161,6 +160,9 @@ def train_p3m10k(
                     num_classes,
                     device,
                 )
+
+            if step % 10 == 0:
+                print(f"Step {step} completed out of {len(train_loader)}")
 
             running_train_loss += loss.item()
             running_train_cls += cls_loss.item()
