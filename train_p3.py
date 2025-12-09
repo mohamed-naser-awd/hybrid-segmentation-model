@@ -151,6 +151,7 @@ def train_p3m10k(
         running_train_cls = 0.0
         running_train_mask = 0.0
 
+        print(f"Training on {len(train_loader)} batches")
         for step, (imgs, masks) in enumerate(train_loader, start=1):
             loss, cls_loss, mask_loss = profile_block(
                 "train step",
