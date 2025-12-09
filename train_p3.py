@@ -181,7 +181,7 @@ def train_p3m10k(
         print(
             f"[Epoch {epoch}/{num_epochs}] "
             f"Train: total={avg_train_loss:.4f}, "
-            f"cls={avg_train_cls:.4f}, mask={avg_train_mask:.4f}"
+            f"cls={avg_train_cls:.4f}, mask={avg_train_mask:.4f}, "
             f"Time: {end_time - start_time:.6f} seconds"
         )
 
