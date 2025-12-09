@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 from network import HybirdSegmentationAlgorithm
 from dataaset import P3MMemmapDataset
 from utils import profile_block
+import time
 
 
 def train_step(
@@ -146,6 +147,7 @@ def train_p3m10k(
     # 3) لوب التدريب
     # ==========================
     for epoch in range(1, num_epochs + 1):
+        start_time = time.time()
         # -------- Train --------
         model.train()
         running_train_loss = 0.0
@@ -174,10 +176,13 @@ def train_p3m10k(
         avg_train_cls = running_train_cls / len(train_loader)
         avg_train_mask = running_train_mask / len(train_loader)
 
+        end_time = time.time()
+
         print(
             f"[Epoch {epoch}/{num_epochs}] "
             f"Train: total={avg_train_loss:.4f}, "
             f"cls={avg_train_cls:.4f}, mask={avg_train_mask:.4f}"
+            f"Time: {end_time - start_time:.6f} seconds"
         )
 
         # -------- Validation --------
