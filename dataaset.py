@@ -63,7 +63,7 @@ class P3MMemmapDataset(Dataset):
         if self.imgs is None:
             self.imgs = np.memmap(
                 self.mmap_path,
-                dtype="float32",
+                dtype="float16",
                 mode="r",
                 shape=(N, C, H, W),
             )
@@ -73,7 +73,7 @@ class P3MMemmapDataset(Dataset):
 
             self.masks = np.memmap(
                 self.mask_mmap_path,
-                dtype="float32",
+                dtype="float16",
                 mode="r",
                 shape=(N, C, H, W),
             )
@@ -83,8 +83,8 @@ class P3MMemmapDataset(Dataset):
 
     def get_item(self, idx):
         self._init_memmap()  # <--- يتفتح لكل ووركر لوحده أول مرة
-        img = torch.from_numpy(self.imgs[idx])
-        mask = torch.from_numpy(self.masks[idx])
+        img = torch.from_numpy(self.imgs[idx]).float()
+        mask = torch.from_numpy(self.masks[idx]).float()
         return img, mask
 
     def __len__(self):
