@@ -75,7 +75,7 @@ class P3MMemmapDataset(Dataset):
                 self.mask_mmap_path,
                 dtype="float16",
                 mode="r",
-                shape=(N, C, H, W),
+                shape=(N, 1, H, W),
             )
 
     def __getitem__(self, idx):
