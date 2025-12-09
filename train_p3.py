@@ -24,15 +24,12 @@ def train_step(
             # لو multi-channel ناخد أول قناة (أو ممكن نعمل mean)
             masks = masks[:, 0, :, :]  # (B, H, W)
 
-    masks = masks.to(device).float()
-
-    # لو الماسك 0/255 نخليه 0/1
-    if masks.max() > 1.0:
-        masks = (masks > 0).float()
+    masks = masks.to(device)
 
     optimizer.zero_grad()
 
-    pred_logits, pred_masks = model(imgs)
+    with torch.cuda.amp.autocast():
+        pred_logits, pred_masks = model(imgs)
     # pred_logits: (B, Q, C1) , C1 = num_classes + 1
     # pred_masks : (B, Q, H, W)
 

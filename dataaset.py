@@ -83,8 +83,8 @@ class P3MMemmapDataset(Dataset):
 
     def get_item(self, idx):
         self._init_memmap()  # <--- يتفتح لكل ووركر لوحده أول مرة
-        img = torch.from_numpy(self.imgs[idx]).float()
-        mask = torch.from_numpy(self.masks[idx]).float()
+        img = torch.from_numpy(self.imgs[idx])
+        mask = torch.from_numpy(self.masks[idx])
         return img, mask
 
     def __len__(self):
