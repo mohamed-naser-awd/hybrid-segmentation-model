@@ -236,6 +236,7 @@ def train_p3m10k(
 
 
 if __name__ == "__main__":
+    torch.multiprocessing.set_start_method("spawn", force=True)
 
     model = HybirdSegmentationAlgorithm(num_classes=1, net_type="18")
     model = model.to("cuda")
