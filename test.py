@@ -57,23 +57,22 @@ def test_model(img_path):
 if __name__ == "__main__":
     torch.backends.cudnn.benchmark = True
 
-    with torch.no_grad():
-        with torch.cuda.amp.autocast():
+    with torch.cuda.amp.autocast():
 
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            model = HybirdSegmentationAlgorithm(num_classes=1, net_type="18").to(device)
-            model = model.eval()
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = HybirdSegmentationAlgorithm(num_classes=1, net_type="18").to(device)
 
-            model.load_state_dict(
-                torch.load("hybrid_seg_p3m10k_dark18.pt", map_location="cuda")
-            )
+        model.load_state_dict(
+            torch.load("hybrid_seg_p3m10k_dark18.pt", map_location="cuda")
+        )
 
-            for module in model.modules():
-                if hasattr(module, "fuse"):
-                    module.fuse()
+        for module in model.modules():
+            if hasattr(module, "fuse"):
+                module.fuse()
 
-            # profile_block("test model", test_model, "1755856419306.png")
-            sorted_images = sorted(os.listdir("P3M-10k/validation/P3M-500-P/blurred_image"))
-            profile_block(
-                "test model", test_model, sorted_images[0]
-            )
+        # profile_block("test model", test_model, "1755856419306.png")
+        folder = "P3M-10k/train/blurred_image"
+        sorted_images = sorted(os.listdir(folder))
+        profile_block(
+            "test model", test_model, os.path.join(folder, sorted_images[0])
+        )

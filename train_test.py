@@ -7,6 +7,7 @@ from network import HybirdSegmentationAlgorithm
 from dataaset import P3MMemmapDataset
 from utils import profile_block
 import time
+from segement import segment_class_on_image, save_segmented_image
 
 
 def train_step(
@@ -39,6 +40,14 @@ def train_step(
     print(pred_logits)
     print("train_test.py - masks:")
     print(pred_masks)
+
+    segmented_image, binary_mask = profile_block(
+        "segment_class_on_image", segment_class_on_image, (pred_logits, pred_masks), imgs, class_id=0
+    )
+    print("train_test.py - segmented_image:")
+    print(segmented_image)
+    print("train_test.py - binary_mask:")
+    print(binary_mask)
 
     B, Q, C1 = pred_logits.shape
     _, Qm, H, W = pred_masks.shape
