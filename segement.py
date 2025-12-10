@@ -40,50 +40,55 @@ from torchvision.transforms.functional import to_pil_image
 
 
 def segment_class_on_image(
-    outputs: dict,
-    image: Tensor,  # (B, 3, H, W)
-    class_id: int,  # الكلاس اللي عايزه (من 0 لـ num_classes-1)
+    outputs,
+    image: Tensor,  # (B, 3, H, W) أو (3, H, W)
+    class_id: int,
     score_thresh: float = 0.7,
     mask_thresh: float = 0.5,
 ):
-    """
-    بيرجع:
-      - segmented_image: صورة جديدة فيها الكلاس ده بس
-      - binary_mask: الماسك الباينري (H, W) كـ Tensor
-    """
-    # هنشتغل على أول صورة بس عشان البساطة
     pred_logits, pred_masks = outputs
 
-    # 1) نجيب probabilities للكلاسات (ونشيل background آخر channel)
+    # --- اشتغل على أول صورة بس في الباتش ---
+    if pred_logits.dim() == 3:
+        # (B, Q, C1) -> (Q, C1)
+        pred_logits = pred_logits[0]
+    if pred_masks.dim() == 4:
+        # (B, Q, H, W) -> (Q, H, W)
+        pred_masks = pred_masks[0]
+
+    # image برضه نخليها (3, H, W)
+    if image.dim() == 4:
+        image = image[0]
+
+    # 1) بروبس لكل كلاس (ونشيل background آخر channel)
     class_probs = pred_logits.softmax(-1)[..., :-1]  # (Q, num_classes)
 
-    # 2) لكل query نعرف أفضل class و السكور بتاعه
+    # 2) أفضل كلاس وسكور لكل query
     scores, labels = class_probs.max(-1)  # (Q,)
 
-    # 3) نختار الـ queries اللي بتتنبأ بالكلاس اللي عايزينه وبسكور كويس
+    # دي مهمة عشان تشوف ليه مفيش queries
+    print("scores:", scores.detach().cpu())
+    print("labels:", labels.detach().cpu())
+
+    # 3) queries اللي بتتكلم عن الكلاس المطلوب وبسكور كويس
     keep = (labels == class_id) & (scores > score_thresh)
 
     if keep.sum() == 0:
         print("No queries for this class with enough confidence.")
         return None, None
 
-    # 4) نجيب masks للـ queries اللي اخترناها
-    masks = pred_masks[keep]  # (K, H, W) , K = عدد الqueries اللي اخترناها
-    masks = torch.sigmoid(masks)  # نخليها [0,1] بدل logits
+    # 4) masks للـ queries المختارة
+    masks = pred_masks[keep]          # (K, H, W)
+    masks = torch.sigmoid(masks)      # logits -> [0,1]
 
-    # 5) نعمل combine للـ masks دي (ممكن max أو sum، max أبسط)
+    # 5) combine (max أو sum، max كويس هنا)
     combined_mask = masks.max(0).values  # (H, W)
 
-    # switch logic to only object exist and background is black, uncomment this for the switch
-    # combined_mask = 1 - combined_mask
-
-    # 6) نعمل threshold ونطلع ماسك باينري
+    # 6) threshold للماسكات
     binary_mask = (combined_mask > mask_thresh).float()  # (H, W)
 
-    # 7) نطبق الماسك على الصورة
-    # لو الصورة normalized لازم ترجعها 0–1 أو 0–255 قبل الـ to_pil_image
-    # هنا بافترض إنها في الرينج [0,1]
-    segmented_image = image * binary_mask.unsqueeze(0)  # (3, H, W)
+    # 7) apply على الصورة (3, H, W)
+    segmented_image = image * binary_mask.unsqueeze(0)
 
     return segmented_image, binary_mask
 
