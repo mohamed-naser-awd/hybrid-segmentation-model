@@ -2,7 +2,7 @@ import os
 import torch
 from torchvision.utils import save_image
 from PIL import Image
-from dataaset import PetSegmentationDataset  # استورد الكلاس اللي عندك
+from dataset import PetSegmentationDataset  # استورد الكلاس اللي عندك
 import torchvision.transforms.functional as TF
 
 # فولدر الإخراج

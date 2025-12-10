@@ -37,7 +37,7 @@ Implements the Feature Pyramid Network:
 
 ### Data Handling
 
-#### `dataaset.py`
+#### `dataset.py`
 Dataset class for loading and preprocessing the Oxford-IIIT Pet dataset:
 - **PetSegmentationDataset**: Wraps the Oxford-IIIT Pet dataset
 - Converts trimap masks (background/pet/border) to binary masks (pet vs background)
@@ -182,7 +182,7 @@ train/
 ├── network.py          # Main model architecture
 ├── backbone.py         # DarkNet53 backbone
 ├── fpn.py             # Feature Pyramid Network
-├── dataaset.py        # Dataset loading
+├── dataset.py        # Dataset loading
 ├── train.py           # Training script
 ├── test.py            # Testing script
 ├── segement.py        # Segmentation post-processing

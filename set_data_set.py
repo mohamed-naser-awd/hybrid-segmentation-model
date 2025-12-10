@@ -19,6 +19,10 @@ def parse_image(img_path, size=640, channels=3):
 
 
 def parse_folder(img_dir, file_name, channels=3):
+    img_dir = os.path.join(
+        "/mnt/c/Users/Mohamed/train",
+        img_dir,
+    )
     images = sorted(os.listdir(img_dir))
     N = len(images)
     H = W = 640
@@ -28,7 +32,7 @@ def parse_folder(img_dir, file_name, channels=3):
     mmap_path = f"dataset/{file_name}.mmap"
     mmap_arr = np.memmap(
         mmap_path,
-        dtype=np.float16,
+        dtype=np.float32,
         mode="w+",
         shape=(N, C, H, W),
     )

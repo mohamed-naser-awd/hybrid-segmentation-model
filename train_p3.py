@@ -4,7 +4,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from network import HybirdSegmentationAlgorithm
-from dataaset import P3MMemmapDataset
+from dataset import P3MMemmapDataset
 from utils import profile_block
 import time
 
@@ -196,10 +196,6 @@ def train_p3m10k(
                     else:
                         masks = masks[:, 0, :, :]
 
-                masks = masks.to(device).float()
-                if masks.max() > 1.0:
-                    masks = (masks > 0).float()
-
                 pred_logits, pred_masks = model(imgs)
 
                 B, Q, C1 = pred_logits.shape
@@ -259,6 +255,5 @@ if __name__ == "__main__":
     torch.multiprocessing.set_start_method("spawn", force=True)
 
     model = HybirdSegmentationAlgorithm(num_classes=1, net_type="18")
-    with torch.cuda.amp.autocast():
-        model = model.to("cuda")
-        train_p3m10k(model, save_path="hybrid_seg_p3m10k_dark18.pt")
+    model = model.to("cuda")
+    train_p3m10k(model, save_path="hybrid_seg_p3m10k_dark18.pt")

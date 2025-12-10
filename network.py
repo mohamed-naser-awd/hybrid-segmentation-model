@@ -67,7 +67,7 @@ class HybirdSegmentationAlgorithm(nn.Module):
         masks = einsum("bqd,bdhw->bqhw", queries_proj, pixel_feats)
 
 
-        return queries_class.squeeze(1), masks.squeeze(1)
+        return queries_class, masks
 
     def get_tensor_tokens(self, tensor: Tensor):
         tokens = tensor.flatten(2).transpose(1, 2)
