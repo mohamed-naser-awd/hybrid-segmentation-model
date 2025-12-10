@@ -280,7 +280,10 @@ if __name__ == "__main__":
     model = HybirdSegmentationAlgorithm(num_classes=1, net_type="18")
     with torch.cuda.amp.autocast():
         model = model.to("cuda")
-        train_p3m10k(model, save_path="hybrid_seg_p3m10k_dark18.pt")
+        try:
+            train_p3m10k(model, save_path="hybrid_seg_p3m10k_dark18.pt")
+        except Exception as e:
+            pass
 
     with torch.no_grad():
         print("train_test.py - test model no grad")
