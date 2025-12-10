@@ -6,13 +6,17 @@ import torchvision.transforms.functional as TF
 from torchvision.transforms import InterpolationMode
 from set_data_set import parse_image
 from utils import profile_block
+import os
 
 
 def test_model_inference(model, image):
+    image = image.half()
 
     outputs = model(image)
 
-    print(outputs)
+    print(image)
+    print(outputs[0])
+    print(outputs[1])
 
     segmented_image, binary_mask = profile_block(
         "segment_class_on_image", segment_class_on_image, outputs, image, class_id=0
@@ -22,7 +26,7 @@ def test_model_inference(model, image):
 
 def test_model(img_path):
 
-    image = parse_image(img_path, size=640, channels=3).to(device)
+    image = torch.from_numpy(parse_image(img_path, size=640, channels=3).numpy()).to(device)
 
     if image.dim() == 3:
         image = image.unsqueeze(0)
@@ -65,6 +69,7 @@ if __name__ == "__main__":
                     module.fuse()
 
             # profile_block("test model", test_model, "1755856419306.png")
+            sorted_images = sorted(os.listdir("P3M-10k/validation/P3M-500-P/blurred_image"))
             profile_block(
-                "test model", test_model, "P3M-10k/train/blurred_image/p_0a0c9250.jpg"
+                "test model", test_model, sorted_images[0]
             )
