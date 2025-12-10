@@ -14,8 +14,11 @@ def test_model_inference(model, image):
 
     outputs = model(image)
 
+    print("test.py - image:")
     print(image)
+    print("test.py - outputs[0]:")
     print(outputs[0])
+    print("test.py - outputs[1]:")
     print(outputs[1])
 
     segmented_image, binary_mask = profile_block(
@@ -44,6 +47,7 @@ def test_model(img_path):
             # لو multi-channel ناخد أول قناة (أو ممكن نعمل mean)
             binary_mask = binary_mask[:, 0, :, :]  # (B, H, W)
 
+    print("test.py - binary_mask:")
     print(binary_mask.to(device))
 
     if segmented_image is not None:

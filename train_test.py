@@ -14,6 +14,7 @@ def train_step(
 ):
     imgs = imgs.to(device)  # (B, 3, H, W)
 
+    print("train_test.py - imgs:")
     print(imgs)
 
     # ----- تجهيز الماسكات -----
@@ -34,7 +35,9 @@ def train_step(
     # pred_logits: (B, Q, C1) , C1 = num_classes + 1
     # pred_masks : (B, Q, H, W)
 
+    print("train_test.py - logits:")
     print(pred_logits)
+    print("train_test.py - masks:")
     print(pred_masks)
 
     B, Q, C1 = pred_logits.shape
