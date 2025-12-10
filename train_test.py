@@ -14,6 +14,8 @@ def train_step(
 ):
     imgs = imgs.to(device)  # (B, 3, H, W)
 
+    print(imgs)
+
     # ----- تجهيز الماسكات -----
     # شكل الماسك من الداتاسيت ممكن يكون:
     # (B, H, W) أو (B, 1, H, W) أو حتى (B, C, H, W)
@@ -32,8 +34,8 @@ def train_step(
     # pred_logits: (B, Q, C1) , C1 = num_classes + 1
     # pred_masks : (B, Q, H, W)
 
-    print(pred_masks)
     print(pred_logits)
+    print(pred_masks)
 
     B, Q, C1 = pred_logits.shape
     _, Qm, H, W = pred_masks.shape
@@ -168,7 +170,6 @@ def train_p3m10k(
             if step % 10 == 0:
                 print(f"Step {step} completed out of {len(train_loader)}")
 
-
             running_train_loss += loss.item()
             running_train_cls += cls_loss.item()
             running_train_mask += mask_loss.item()
@@ -265,8 +266,6 @@ if __name__ == "__main__":
     torch.multiprocessing.set_start_method("spawn", force=True)
 
     model = HybirdSegmentationAlgorithm(num_classes=1, net_type="18")
-    model = model.to("cuda")
-    model.load_state_dict(
-        torch.load("hybrid_seg_p3m10k_dark18.pt", map_location="cuda")
-    )
-    train_p3m10k(model, save_path="hybrid_seg_p3m10k_dark18.pt")
+    with torch.cuda.amp.autocast():
+        model = model.to("cuda")
+        train_p3m10k(model, save_path="hybrid_seg_p3m10k_dark18.pt")

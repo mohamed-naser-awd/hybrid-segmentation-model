@@ -12,6 +12,8 @@ def test_model_inference(model, image):
 
     outputs = model(image)
 
+    print(outputs)
+
     segmented_image, binary_mask = profile_block(
         "segment_class_on_image", segment_class_on_image, outputs, image, class_id=0
     )
@@ -25,6 +27,8 @@ def test_model(img_path):
     if image.dim() == 3:
         image = image.unsqueeze(0)
 
+    image = image.to(device)
+
     segmented_image, binary_mask = profile_block(
         "test_model_inference", test_model_inference, model, image
     )
@@ -36,7 +40,6 @@ def test_model(img_path):
             # لو multi-channel ناخد أول قناة (أو ممكن نعمل mean)
             binary_mask = binary_mask[:, 0, :, :]  # (B, H, W)
 
-
     print(binary_mask.to(device))
 
     if segmented_image is not None:
@@ -47,6 +50,7 @@ if __name__ == "__main__":
     torch.backends.cudnn.benchmark = True
 
     with torch.no_grad():
+        with torch.cuda.amp.autocast():
 
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             model = HybirdSegmentationAlgorithm(num_classes=1, net_type="18").to(device)

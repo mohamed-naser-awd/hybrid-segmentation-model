@@ -39,6 +39,10 @@ class HybirdSegmentationAlgorithm(nn.Module):
 
 
     def forward(self, image: Tensor):
+
+        print(image)
+        print(image.shape)
+
         c3, c4, c5 = profile_block("backbone", self.backbone, image)
         p3, p4, p5 = profile_block("fpn", self.fpn, (c3, c4, c5))
         p3: Tensor = profile_block("patchify", self.patchify, p3)
@@ -65,7 +69,7 @@ class HybirdSegmentationAlgorithm(nn.Module):
 
         masks = einsum("bqd,bdhw->bqhw", queries_proj, pixel_feats)
 
-        print(masks)
+
         return queries_class.squeeze(1), masks.squeeze(1)
 
     def get_tensor_tokens(self, tensor: Tensor):
