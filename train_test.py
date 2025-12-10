@@ -26,13 +26,14 @@ def train_step(
 
     masks = masks.to(device)
 
-    print(masks)
-
     optimizer.zero_grad()
 
     pred_logits, pred_masks = model(imgs)
     # pred_logits: (B, Q, C1) , C1 = num_classes + 1
     # pred_masks : (B, Q, H, W)
+
+    print(pred_masks)
+    print(pred_logits)
 
     B, Q, C1 = pred_logits.shape
     _, Qm, H, W = pred_masks.shape

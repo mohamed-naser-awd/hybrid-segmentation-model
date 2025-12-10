@@ -29,7 +29,15 @@ def test_model(img_path):
         "test_model_inference", test_model_inference, model, image
     )
 
-    print(binary_mask)
+    if binary_mask.dim() == 4:
+        if binary_mask.size(1) == 1:
+            binary_mask = binary_mask.squeeze(1)  # (B, H, W)
+        else:
+            # لو multi-channel ناخد أول قناة (أو ممكن نعمل mean)
+            binary_mask = binary_mask[:, 0, :, :]  # (B, H, W)
+
+
+    print(binary_mask.to(device))
 
     if segmented_image is not None:
         save_segmented_image(segmented_image, "segmented_image.png")
