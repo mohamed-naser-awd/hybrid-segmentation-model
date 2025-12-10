@@ -40,9 +40,6 @@ class HybirdSegmentationAlgorithm(nn.Module):
 
     def forward(self, image: Tensor):
 
-        print(image)
-        print(image.shape)
-
         c3, c4, c5 = profile_block("backbone", self.backbone, image)
         p3, p4, p5 = profile_block("fpn", self.fpn, (c3, c4, c5))
         p3: Tensor = profile_block("patchify", self.patchify, p3)
