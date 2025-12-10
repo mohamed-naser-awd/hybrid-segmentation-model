@@ -281,3 +281,10 @@ if __name__ == "__main__":
     with torch.cuda.amp.autocast():
         model = model.to("cuda")
         train_p3m10k(model, save_path="hybrid_seg_p3m10k_dark18.pt")
+
+    with torch.no_grad():
+        print("train_test.py - test model no grad")
+        with torch.cuda.amp.autocast():
+            model = model.to("cuda")
+            model = model.eval()
+            train_p3m10k(model, save_path="hybrid_seg_p3m10k_dark18.pt")
