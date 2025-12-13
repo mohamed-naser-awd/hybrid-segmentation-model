@@ -77,11 +77,12 @@ class DarkNet(nn.Module):
             "18": {"4": 2, "5": 1},
             "21": {"4": 2, "5": 2},
             "24": {"4": 2, "5": 3},
+            "53": {"2": 2, "3": 8, "4": 8, "5": 4},  # DarkNet-53 (YOLOv3-style)
         }
 
         self.c1 = ResidualStage(1, 32, 64)
-        self.c2 = ResidualStage(1, 64, 128)
-        self.c3 = ResidualStage(2, 128, 256)
+        self.c2 = ResidualStage(stage_block_mapper[net_type].get("2", 1), 64, 128)
+        self.c3 = ResidualStage(stage_block_mapper[net_type].get("3", 2), 128, 256)
         self.c4 = ResidualStage(stage_block_mapper[net_type]["4"], 256, 512)
         self.c5 = ResidualStage(stage_block_mapper[net_type]["5"], 512, 1024)
 

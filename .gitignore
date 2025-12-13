@@ -7,3 +7,6 @@ p3m-10k_facemask
 *.mmap
 *.png
 wenv
+dataset
+images
+*.logs

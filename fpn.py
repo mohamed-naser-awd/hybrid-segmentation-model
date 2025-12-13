@@ -31,3 +31,47 @@ class FPN(nn.Module):
         c3_u = concat((p4_up, c3), dim=1)
         p3 = self.c3_conv(c3_u)
         return p3, p4, p5
+
+
+class SWINFPN(nn.Module):
+    def __init__(self, c3_in=192, c4_in=384, c5_in=768, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.upsample = nn.Upsample(scale_factor=2, mode="nearest")
+
+        # c5 -> p5 (768 -> 512)
+        self.c5_conv = nn.Sequential(
+            nn.Conv2d(c5_in, 512, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.1, inplace=True),
+        )
+
+        # (p5_up + c4) -> p4
+        # p5_up channels = 512, c4 channels = c4_in => 512 + 384 = 896
+        self.c4_conv = nn.Sequential(
+            nn.Conv2d(512 + c4_in, 256, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.1, inplace=True),
+        )
+
+        # (p4_up + c3) -> p3
+        # p4_up channels = 256, c3 channels = c3_in => 256 + 192 = 448
+        self.c3_conv = nn.Sequential(
+            nn.Conv2d(256 + c3_in, 256, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.1, inplace=True),
+        )
+
+    def forward(self, x):
+        c3, c4, c5 = x
+
+        p5 = self.c5_conv(c5)
+        p5_up = self.upsample(p5)
+
+        c4_u = concat((p5_up, c4), dim=1)
+        p4 = self.c4_conv(c4_u)
+        p4_up = self.upsample(p4)
+
+        c3_u = concat((p4_up, c3), dim=1)
+        p3 = self.c3_conv(c3_u)
+
+        return p3, p4, p5

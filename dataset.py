@@ -63,7 +63,7 @@ class P3MMemmapDataset(Dataset):
         if self.imgs is None:
             self.imgs = np.memmap(
                 self.mmap_path,
-                dtype="float32",
+                dtype="float16",
                 mode="r",
                 shape=(N, C, H, W),
             )
@@ -73,14 +73,14 @@ class P3MMemmapDataset(Dataset):
 
             self.masks = np.memmap(
                 self.mask_mmap_path,
-                dtype="float32",
+                dtype="float16",
                 mode="r",
                 shape=(N, 1, H, W),
             )
 
     def __getitem__(self, idx):
         # return self.get_item(idx)
-        return profile_block("get p3m10k item", self.get_item, idx)
+        return profile_block(f"get p3m10k item for idx={idx}", self.get_item, idx)
 
     def get_item(self, idx):
         self._init_memmap()  # <--- يتفتح لكل ووركر لوحده أول مرة
