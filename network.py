@@ -75,7 +75,7 @@ class HybirdSegmentationAlgorithm(nn.Module):
 
         masks = profile_block("mask_refine", self.mask_refine, pixel_feats)
         masks = einsum("bqd,bdhw->bqhw", queries_proj, masks)
-        masks = F.interpolate(masks, size=image.shape[-2:], mode="bilinear")
+        masks = F.interpolate(masks, size=image.shape[-2:], mode="nearest")
         # masks = profile_block("mask_upsample", self.mask_upsample, masks)
 
         return queries_class, masks

@@ -1,3 +1,4 @@
+import os
 from network import HybirdSegmentationAlgorithm
 from segement import save_segmented_image
 from set_data_set import parse_image
@@ -280,8 +281,12 @@ def test_model(img_path: str, mask_threshold: float = 0.7):
         print("Mask stats -> min:", mask_2d.min().item(), "max:", mask_2d.max().item())
 
     # حفظ الصورة الناتجة (الـ save_segmented_image تتكفّل بالـ CPU/convert لو معمول فيها كده)
-    save_segmented_image(segmented_image, "segmented_image.png")
-    print("Segmented image saved to segmented_image.png")
+    save_path = os.path.join(
+        "exported_images",
+        f"{img_path.split('/')[-1].split('.')[0]}.png"
+    )
+    save_segmented_image(segmented_image, save_path)
+    print(f"Segmented image saved to {save_path}")
 
 
 if __name__ == "__main__":
@@ -298,9 +303,9 @@ if __name__ == "__main__":
     # Hooks debug للـ NaN/Inf
     attach_nan_debug_hooks(model)
 
-    img_path = "images/test.jpg"  # غيّرها للمسار اللي أنت عايزه
-
-    with torch.no_grad():
-        # نستخدم autocast للـ FP16 (mixed precision) في inference
-        with torch.cuda.amp.autocast(dtype=torch.float16):
-            profile_block("test_model", test_model, img_path)
+    for image in os.listdir("images"):
+        img_path = os.path.join("images", image)
+        with torch.no_grad():
+            # نستخدم autocast للـ FP16 (mixed precision) في inference
+            with torch.cuda.amp.autocast(dtype=torch.float16):
+                profile_block("test_model", test_model, img_path)

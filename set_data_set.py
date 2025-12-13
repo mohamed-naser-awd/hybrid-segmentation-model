@@ -3,6 +3,18 @@ from PIL import Image
 import numpy as np
 import torchvision.transforms.functional as TF
 from torchvision.transforms import InterpolationMode
+import torch
+from torchvision.utils import save_image
+
+
+def make_negative_mask_from_image() -> torch.Tensor:
+    """
+    img: Tensor [C, H, W]
+    return: Tensor [1, H, W] كلها zeros
+    """
+    H, W = 640, 640
+    mask = torch.zeros((1, H, W), dtype=torch.float16)
+    return mask
 
 
 def parse_image(img_path, size=640, channels=3):
@@ -61,6 +73,7 @@ if __name__ == "__main__":
     #     [
     #         "dataset/P3M-10k/train/blurred_image",
     #         "dataset/supervisely_person_clean_2667_img/supervisely_person_clean_2667_img/images",
+    #         "dataset/places/train"
     #     ],
     #     "train_640_fp16_images",
     #     channels=3,
@@ -70,18 +83,19 @@ if __name__ == "__main__":
         [
             "dataset/P3M-10k/train/mask",
             "dataset/supervisely_person_clean_2667_img/supervisely_person_clean_2667_img/masks",
+            "dataset/places/masks"
         ],
         "train_640_fp16_masks",
         channels=1,
     )
 
-    parse_folder(
-        ["dataset/P3M-10k/validation/P3M-500-P/blurred_image"],
-        "val_640_fp16_images",
-        channels=3,
-    )
-    parse_folder(
-        ["dataset/P3M-10k/validation/P3M-500-P/mask"],
-        "val_640_fp16_masks",
-        channels=1,
-    )
+    # parse_folder(
+    #     ["dataset/P3M-10k/validation/P3M-500-P/blurred_image"],
+    #     "val_640_fp16_images",
+    #     channels=3,
+    # )
+    # parse_folder(
+    #     ["dataset/P3M-10k/validation/P3M-500-P/mask"],
+    #     "val_640_fp16_masks",
+    #     channels=1,
+    # )
