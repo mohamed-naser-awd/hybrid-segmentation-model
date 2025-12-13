@@ -38,16 +38,45 @@ Implements the Feature Pyramid Network:
 ### Data Handling
 
 #### `dataset.py`
-Dataset class for loading and preprocessing the Oxford-IIIT Pet dataset:
-- **PetSegmentationDataset**: Wraps the Oxford-IIIT Pet dataset
-- Converts trimap masks (background/pet/border) to binary masks (pet vs background)
-- Resizes images and masks to a specified size (default: 640x640)
-- Returns normalized image tensors and binary mask tensors
+Dataset classes for loading and preprocessing image segmentation data:
+- **P3M10kDataset**: Loads images and masks from the P3M-10k dataset
+  - Supports custom image and mask directories
+  - Resizes images and masks to a specified size (default: 640x640)
+  - Handles both JPG and PNG image formats
+- **P3MMemmapDataset**: Efficient dataset loader using memory-mapped files
+  - Loads preprocessed data from `.mmap` files for faster I/O
+  - Supports multi-worker data loading
+  - Used for training with combined datasets
+- **PetSegmentationDataset**: Legacy dataset wrapper for Oxford-IIIT Pet dataset (for reference)
+
+#### Datasets Used
+The project uses two main datasets:
+1. **P3M-10k Dataset**: 
+   - Training images: `dataset/P3M-10k/train/blurred_image`
+   - Training masks: `dataset/P3M-10k/train/mask`
+   - Validation images: `dataset/P3M-10k/validation/P3M-500-P/blurred_image`
+   - Validation masks: `dataset/P3M-10k/validation/P3M-500-P/mask`
+2. **Supervisely Person Clean 2667 Dataset**:
+   - Training images: `dataset/supervisely_person_clean_2667_img/supervisely_person_clean_2667_img/images`
+   - Training masks: `dataset/supervisely_person_clean_2667_img/supervisely_person_clean_2667_img/masks`
+
+The datasets are combined and preprocessed into memory-mapped files (`.mmap`) for efficient training using the `set_data_set.py` script.
 
 ### Training and Testing
 
+#### `train_p3.py`
+Main training script for the segmentation model using P3M-10k and Supervisely datasets:
+- **`train_p3m10k()`**: Full training pipeline:
+  - Uses `P3MMemmapDataset` for efficient data loading
+  - Supports training and validation splits
+  - Uses AdamW optimizer with CrossEntropyLoss for classification and BCEWithLogitsLoss for masks
+  - Implements mixed precision training with GradScaler
+  - Saves best model checkpoint based on validation loss
+  - Training dataset: ~12,088 samples (combined P3M-10k and Supervisely)
+  - Validation dataset: 500 samples from P3M-500-P
+
 #### `train.py`
-Training script for the segmentation model:
+Legacy training script for single image overfitting (for testing):
 - **`load_single_sample()`**: Loads a single image-mask pair and preprocesses them
 - **`train_on_single_image()`**: Trains the model on a single image (overfitting):
   - Loads image and mask
@@ -98,7 +127,26 @@ Simple example script showing how to use the model:
 
 ## Usage
 
-### Training on a Single Image
+### Training the Model
+
+For full training on the combined datasets:
+
+```bash
+python train_p3.py
+```
+
+This will:
+1. Load training data from memory-mapped files (`train_640_fp16_images.mmap` and `train_640_fp16_masks.mmap`)
+2. Train the model for multiple epochs with validation
+3. Save the best model checkpoint to `hybrid_seg_p3m10k.pt`
+
+You can modify the training parameters:
+- `num_epochs`: Number of training epochs (default: 50)
+- `batch_size`: Batch size (default: 20)
+- `lr`: Learning rate (default: 1e-4)
+- `num_workers`: Number of data loading workers (default: 4)
+
+For single image overfitting (testing):
 
 ```bash
 python train.py
@@ -108,10 +156,6 @@ This will:
 1. Load `export/image.png` and `export/mask.png`
 2. Train the model for 100 steps (default)
 3. Save the model to `hybrid_seg_single_overfit.pt`
-
-You can modify the training parameters in the `__main__` block:
-- `num_steps`: Number of training iterations
-- `lr`: Learning rate (default: 1e-4)
 
 ### Testing a Trained Model
 
@@ -125,15 +169,28 @@ This will:
 3. Generate and save `segmented_image.png`
 4. Print timing information for each component
 
+### Preparing Datasets
+
+Before training, you need to prepare the datasets using `set_data_set.py`:
+
+```bash
+python set_data_set.py
+```
+
+This script:
+1. Combines images from P3M-10k and supervisely_person_clean_2667_img datasets
+2. Resizes all images and masks to 640x640
+3. Converts them to memory-mapped files (`.mmap`) for efficient loading
+4. Creates `train_640_fp16_images.mmap` and `train_640_fp16_masks.mmap` for training
+5. Creates `val_640_fp16_images.mmap` and `val_640_fp16_masks.mmap` for validation
+
 ### Exporting Sample Data
 
 ```bash
 python export.py
 ```
 
-This will:
-1. Download the Oxford-IIIT Pet dataset (if not already present)
-2. Export the first sample to `export/image.png` and `export/mask.png`
+This will export sample data to the `export/` directory for testing purposes.
 
 ## Model Architecture Details
 
@@ -183,7 +240,9 @@ train/
 ├── backbone.py         # DarkNet53 backbone
 ├── fpn.py             # Feature Pyramid Network
 ├── dataset.py        # Dataset loading
-├── train.py           # Training script
+├── train_p3.py        # Main training script (P3M-10k + Supervisely)
+├── train.py           # Legacy single image training script
+├── set_data_set.py    # Dataset preprocessing and memmap creation
 ├── test.py            # Testing script
 ├── segement.py        # Segmentation post-processing
 ├── export.py          # Data export utility
@@ -197,11 +256,14 @@ train/
 
 ## Notes
 
-- The model is designed for single-class segmentation (pet vs background)
-- Training uses overfitting on a single image for demonstration purposes
+- The model is designed for foreground/background segmentation (person/object vs background)
+- Training uses combined datasets: P3M-10k (~10k images) and Supervisely Person Clean 2667 (~2.6k images)
 - The segmentation output inverts the mask so the object is visible (background is black)
 - Model uses CUDA if available, otherwise falls back to CPU
 - All images are processed at 640x640 resolution
+- Data is preprocessed into memory-mapped files for efficient loading during training
+- Training dataset contains ~12,088 combined samples
+- Validation uses 500 samples from P3M-500-P subset
 
 ## Future Improvements
 
