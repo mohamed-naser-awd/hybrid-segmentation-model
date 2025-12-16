@@ -52,7 +52,7 @@ def create_mammap(images, mmap_path, channels=3):
             mmap_arr.flush()  # تأمين الكتابة على الديسك
 
     mmap_arr.flush()
-    print("Done, memmap saved at:", mmap_path)
+    print("Done, memmap saved at:", mmap_path, f"for {N} images")
 
 
 def parse_folder(folders: list[str], file_name, channels=3):
@@ -69,21 +69,23 @@ def parse_folder(folders: list[str], file_name, channels=3):
 
 
 if __name__ == "__main__":
-    # parse_folder(
-    #     [
-    #         "dataset/P3M-10k/train/blurred_image",
-    #         "dataset/supervisely_person_clean_2667_img/supervisely_person_clean_2667_img/images",
-    #         "dataset/places/train"
-    #     ],
-    #     "train_640_fp16_images",
-    #     channels=3,
-    # )
+    parse_folder(
+        [
+            "dataset/P3M-10k/train/blurred_image",
+            "dataset/supervisely_person_clean_2667_img/supervisely_person_clean_2667_img/images",
+            "dataset/places/train",
+            "dataset/oxford-pet/images",
+        ],
+        "train_640_fp16_images",
+        channels=3,
+    )
 
     parse_folder(
         [
             "dataset/P3M-10k/train/mask",
             "dataset/supervisely_person_clean_2667_img/supervisely_person_clean_2667_img/masks",
-            "dataset/places/masks"
+            "dataset/places/masks",
+            "dataset/oxford-pet/images",
         ],
         "train_640_fp16_masks",
         channels=1,

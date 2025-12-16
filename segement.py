@@ -15,7 +15,7 @@ logits is Q, num_classes+1 tensor, so we need to get the class with the highest 
 each pred_logits i has its own mask of index(i)
 we first need to get logits for the class we want to segment
 we know which masks we have then
-we combine the masks for the same class so we get max probability from all masks 
+we combine the masks for the same class so we get max probability from all masks
 
 not every pixel in mask belong to the class as its probability is not 1
 so we need to threshold the mask to get the binary mask
@@ -32,7 +32,6 @@ to switch so only object exist and background is black, we need to subtract the 
 
 
 """
-
 
 import torch
 from torch import Tensor
@@ -78,8 +77,8 @@ def segment_class_on_image(
         return None, None
 
     # 4) masks للـ queries المختارة
-    masks = pred_masks[keep]          # (K, H, W)
-    masks = torch.sigmoid(masks)      # logits -> [0,1]
+    masks = pred_masks[keep]  # (K, H, W)
+    masks = torch.sigmoid(masks)  # logits -> [0,1]
 
     # 5) combine (max أو sum، max كويس هنا)
     combined_mask = masks.max(0).values  # (H, W)

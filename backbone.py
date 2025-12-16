@@ -67,11 +67,6 @@ class ResidualStage(nn.Module):
 class DarkNet(nn.Module):
     def __init__(self, net_type: str = "18", *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.stem = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(32),
-            nn.LeakyReLU(0.1, inplace=True),
-        )
 
         stage_block_mapper = {
             "18": {"4": 2, "5": 1},
@@ -87,10 +82,9 @@ class DarkNet(nn.Module):
         self.c5 = ResidualStage(stage_block_mapper[net_type]["5"], 512, 1024)
 
     def forward(self, x):
-        x = profile_block("stem", self.stem, x)
-        x = profile_block("c1", self.c1, x)
-        x = profile_block("c2", self.c2, x)
-        c3 = profile_block("c3", self.c3, x)
+        c1 = profile_block("c1", self.c1, x)
+        c2 = profile_block("c2", self.c2, c1)
+        c3 = profile_block("c3", self.c3, c2)
         c4 = profile_block("c4", self.c4, c3)
         c5 = profile_block("c5", self.c5, c4)
-        return c3, c4, c5
+        return c1, c2, c3, c4, c5
