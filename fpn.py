@@ -55,4 +55,4 @@ class FPN(nn.Module):
         p2_up = self.upsample(p2)
         p1 = self.c1_conv(concat((p2_up, c1), dim=1))
 
-        return p1, p2, p3, p4, p5
+        return p1
