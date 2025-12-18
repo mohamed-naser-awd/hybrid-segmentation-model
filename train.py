@@ -266,7 +266,6 @@ def train():
 
     model = HybirdSegmentationAlgorithm(
         num_classes=1,
-        net_type="21",
         query_count=1,  # مهم: semantic mask واحدة
         d_model=192,
     ).to(device)

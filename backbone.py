@@ -6,7 +6,6 @@ class ResidualBlock(nn.Module):
     def __init__(self, in_channels, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
-        self.dropout = nn.Dropout2d(0.15)
         self.conv1 = nn.Conv2d(
             in_channels,
             in_channels // 2,
@@ -34,23 +33,21 @@ class ResidualBlock(nn.Module):
         x = self.activation(x)
         x = self.conv2(x)
         x = self.bn2(x)
-        x = self.dropout(x)
         return residual + x
 
 
 class ResidualStage(nn.Module):
     def __init__(
-        self, residual_blocks_count, in_channels, output_channels, *args, **kwargs
+        self, residual_blocks_count, in_channels, output_channels, stride=2, *args, **kwargs
     ) -> None:
         super().__init__(*args, **kwargs)
 
         self.layers = nn.Sequential(
-            nn.Dropout(0.1),
             nn.Conv2d(
                 in_channels,
                 output_channels,
                 kernel_size=3,
-                stride=2,
+                stride=stride,
                 padding=1,
                 bias=False,
             ),
@@ -75,8 +72,8 @@ class DarkNet(nn.Module):
             "53": {"2": 2, "3": 8, "4": 8, "5": 4},  # DarkNet-53 (YOLOv3-style)
         }
 
-        self.c1 = ResidualStage(1, 32, 64)
-        self.c2 = ResidualStage(stage_block_mapper[net_type].get("2", 1), 64, 128)
+        self.c1 = ResidualStage(1, 32, 64, stride=1)
+        self.c2 = ResidualStage(stage_block_mapper[net_type].get("2", 1), 64, 128, stride=1)
         self.c3 = ResidualStage(stage_block_mapper[net_type].get("3", 2), 128, 256)
         self.c4 = ResidualStage(stage_block_mapper[net_type]["4"], 256, 512)
         self.c5 = ResidualStage(stage_block_mapper[net_type]["5"], 512, 1024)

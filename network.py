@@ -1,6 +1,6 @@
 from backbone import DarkNet
 from fpn import FPN
-from torch import nn, Tensor, concat, sigmoid
+from torch import nn, Tensor, concat
 from torch.nn import functional as F
 from utils import profile_block
 
@@ -34,7 +34,7 @@ class HybirdSegmentationAlgorithm(nn.Module):
             nn.Conv2d(64, 16, 3, padding=1, bias=False),
             nn.BatchNorm2d(16),
             nn.LeakyReLU(0.1, inplace=True),
-            nn.Conv2d(16, 1, 1)
+            nn.Conv2d(16, 1, 1),
         )
 
     def forward(self, image: Tensor):
