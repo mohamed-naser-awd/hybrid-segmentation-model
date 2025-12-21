@@ -1,255 +1,261 @@
-import logging
-import time
+import os
 import random
-import numpy as np
+from dataclasses import dataclass
 
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, Subset
 from torch.cuda.amp import autocast, GradScaler
 
+# نفس imports بتاعتك
 from network import HybirdSegmentationAlgorithm
 from dataset import P3MMemmapDataset
-from utils import profile_block
 
 # ==========================
-# Logging
+# Device + Reproducibility
 # ==========================
-logging.basicConfig(
-    filename="overfit.logs",
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
-logging.info("Overfit debug started")
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
-# ==========================
-# Dice Loss + وزنها
-# ==========================
-DICE_WEIGHT = 1.0
-
-def dice_loss(pred, target, eps=1e-6):
-    pred = torch.sigmoid(pred)
-    pred = pred.flatten(1)
-    target = target.flatten(1)
-    intersection = (pred * target).sum(dim=1)
-    union = pred.sum(dim=1) + target.sum(dim=1)
-    dice = (2 * intersection + eps) / (union + eps)
-    return 1 - dice.mean()
-
-@torch.no_grad()
-def hard_dice_iou_from_logits(mask_logits, mask_target, thr=0.5, eps=1e-6):
-    """
-    mask_logits: (B, Q, H, W) logits
-    mask_target: (B, Q, H, W) float 0/1
-    نحسب dice/iou على query 0 فقط (object)
-    """
-    prob = torch.sigmoid(mask_logits[:, 0])           # (B,H,W)
-    pred = (prob > thr).float()
-    tgt = (mask_target[:, 0] > 0.5).float()
-
-    inter = (pred * tgt).sum(dim=(1,2))
-    union = pred.sum(dim=(1,2)) + tgt.sum(dim=(1,2))
-    dice = (2 * inter + eps) / (union + eps)
-
-    iou = inter / (pred.sum(dim=(1,2)) + tgt.sum(dim=(1,2)) - inter + eps)
-    return dice.mean().item(), iou.mean().item()
-
-def seed_everything(seed=123):
+def seed_everything(seed: int = 123):
     random.seed(seed)
-    np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-def train_step(
-    model,
-    imgs,
-    masks,
-    optimizer,
-    cls_criterion,
-    mask_criterion,
-    num_classes,
-    device,
-    scaler: GradScaler,
-):
-    imgs = imgs.to(device, non_blocking=True)
+# ==========================
+# Config (Overfit)
+# ==========================
+@dataclass
+class OverfitConfig:
+    # خليه كبير عشان يسمح بالـ overfit
+    epochs: int = 500
+    batch_size: int = 10           # = عدد الصور نفسها
+    lr: float = 2e-4               # ممكن ترفعه لـ 1e-3 لو التدريب بطيء
+    weight_decay: float = 0.0      # عادةً بنقفله للـ overfit
+    num_workers: int = 0
+    pin_memory: bool = True
 
-    if masks.dim() == 4:
-        if masks.size(1) == 1:
-            masks = masks.squeeze(1)
-        else:
-            masks = masks[:, 0, :, :]
-    masks = masks.to(device, non_blocking=True)
+    use_amp: bool = True
 
-    optimizer.zero_grad(set_to_none=True)
+    # loss weights
+    bce_weight: float = 1.0
+    dice_weight: float = 1.0
+    dice_smooth: float = 1.0
 
-    with autocast(dtype=torch.float16, enabled=(device == "cuda")):
-        pred_logits, pred_masks = model(imgs)  # (B,Q,C1), (B,Q,H,W)
+    # debug
+    subset_size: int = 10
+    save_every: int = 10           # كل كام epoch يحفظ صور مقارنة
+    out_dir: str = "overfit_debug"
+    thresh: float = 0.1
 
-        B, Q, C1 = pred_logits.shape
-        _, Qm, H, W = pred_masks.shape
-        assert Q == Qm, "Mismatch between Q of logits and masks!"
+# ==========================
+# Losses & Metrics (LOGITS -> sigmoid inside)
+# ==========================
+def dice_loss_from_probs(probs: torch.Tensor, targets: torch.Tensor, smooth: float = 1.0) -> torch.Tensor:
+    probs = probs.flatten(1)
+    targets = targets.flatten(1)
+    intersection = (probs * targets).sum(dim=1)
+    union = probs.sum(dim=1) + targets.sum(dim=1)
+    dice = (2.0 * intersection + smooth) / (union + smooth + 1e-7)
+    return 1.0 - dice.mean()
 
-        target_classes = torch.full(
-            (B, Q),
-            fill_value=num_classes,   # background index
-            dtype=torch.long,
-            device=device,
-        )
-        target_classes[:, 0] = 0  # query 0 = object
+@torch.no_grad()
+def dice_score_from_probs(probs: torch.Tensor, targets: torch.Tensor, thresh: float = 0.5) -> float:
+    preds = (probs >= thresh).float()
+    preds = preds.flatten(1)
+    targets = targets.flatten(1)
+    intersection = (preds * targets).sum(dim=1)
+    union = preds.sum(dim=1) + targets.sum(dim=1)
+    dice = (2.0 * intersection + 1.0) / (union + 1.0 + 1e-7)
+    return float(dice.mean().item())
 
-        target_masks = torch.zeros((B, Q, H, W), dtype=torch.float32, device=device)
-        target_masks[:, 0, :, :] = masks
+def compute_loss(mask_logits: torch.Tensor, target_masks: torch.Tensor, bce_logits_crit: nn.Module, cfg: OverfitConfig):
+    # ensure shape [B,1,H,W]
+    if mask_logits.dim() == 3:
+        mask_logits = mask_logits.unsqueeze(1)
+    if target_masks.dim() == 3:
+        target_masks = target_masks.unsqueeze(1)
 
-        cls_loss = cls_criterion(
-            pred_logits.view(B * Q, C1),
-            target_classes.view(B * Q),
-        )
+    target_masks = (target_masks > 0).float()
 
-        bce_loss = mask_criterion(pred_masks, target_masks)
-        d_loss = dice_loss(pred_masks, target_masks)
-        mask_loss = bce_loss + DICE_WEIGHT * d_loss
+    bce = bce_logits_crit(mask_logits, target_masks)
+    probs = torch.sigmoid(mask_logits)
+    dice = dice_loss_from_probs(probs, target_masks, smooth=cfg.dice_smooth)
 
-        loss = cls_loss + mask_loss
+    total = cfg.bce_weight * bce + cfg.dice_weight * dice
+    return total, float(bce.item()), float(dice.item()), probs
 
-    def backward_fn():
-        scaler.scale(loss).backward()
-
-    profile_block("backward", backward_fn)
-
-    def step_fn():
-        scaler.step(optimizer)
-        scaler.update()
-
-    profile_block("optimizer step", step_fn)
-
-    return loss, cls_loss, mask_loss
-
-def overfit_p3m_memmap(
-    model: HybirdSegmentationAlgorithm,
-    overfit_n: int = 16,
-    num_epochs: int = 300,
-    batch_size: int = 8,
-    lr: float = 3e-4,
-    num_workers: int = 0,
-    seed: int = 123,
-):
-    seed_everything(seed)
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    logging.info(f"Using device: {device}")
-    model = model.to(device)
-
-    # نفس داتاسيت التدريب بتاعتك
-    full_train = P3MMemmapDataset(
+# ==========================
+# Dataset: نفس memmap dataset بتاعك لكن Subset(10)
+# ==========================
+def build_full_train_dataset():
+    return P3MMemmapDataset(
         mmap_path="dataset/train_640_fp16_images.mmap",
         mask_mmap_path="dataset/train_640_fp16_masks.mmap",
-        N=13003,
+        N=20392,
     )
 
-    # اختار أول N (أو ممكن تختار random indices)
-    indices = list(range(overfit_n))
-    tiny_ds = Subset(full_train, indices)
+# ==========================
+# Debug image saving
+# ==========================
+@torch.no_grad()
+def save_debug_batch(images, targets, probs, epoch: int, cfg: OverfitConfig):
+    """
+    Saves a small grid of:
+      - input image
+      - GT mask
+      - predicted prob map
+      - predicted binary mask
+    Each saved as separate PNG grids to avoid confusion.
+    """
+    os.makedirs(cfg.out_dir, exist_ok=True)
 
-    pin = True if device == "cuda" else False
+    # take up to 4 samples for visualization
+    k = min(4, images.size(0))
+    imgs = images[:k].detach().float().cpu()
+    tgts = targets[:k].detach().float().cpu()
+    prb = probs[:k].detach().float().cpu()
+    binm = (prb >= cfg.thresh).float()
+
+    # normalize image if it looks like 0..255
+    if imgs.max() > 1.5:
+        imgs = imgs / 255.0
+
+    # make sure masks are 1-channel
+    if tgts.dim() == 3:
+        tgts = tgts.unsqueeze(1)
+    if prb.dim() == 3:
+        prb = prb.unsqueeze(1)
+    if binm.dim() == 3:
+        binm = binm.unsqueeze(1)
+
+    try:
+        import torchvision
+        torchvision.utils.save_image(imgs, os.path.join(cfg.out_dir, f"e{epoch:04d}_img.png"))
+        torchvision.utils.save_image(tgts, os.path.join(cfg.out_dir, f"e{epoch:04d}_gt.png"))
+        torchvision.utils.save_image(prb,  os.path.join(cfg.out_dir, f"e{epoch:04d}_prob.png"))
+        torchvision.utils.save_image(binm, os.path.join(cfg.out_dir, f"e{epoch:04d}_bin.png"))
+    except Exception as e:
+        print(f"[WARN] Could not save debug images (torchvision missing?): {e}")
+
+# ==========================
+# Main Overfit Loop
+# ==========================
+def main():
+    seed_everything(123)
+    cfg = OverfitConfig()
+
+    # Model
+    model = HybirdSegmentationAlgorithm(
+        num_classes=1,
+        query_count=1,
+    ).to(device)
+
+    # Optional: load your checkpoint (زي كودك)
+    ckpt_path = "checkpoints/epoch_0008.pt"
+    if os.path.exists(ckpt_path):
+        ckpt = torch.load(ckpt_path, map_location="cpu")
+        model.load_state_dict(ckpt["model"])
+        print(f"[INFO] Loaded checkpoint: {ckpt_path} (epoch={ckpt.get('epoch', 'N/A')})")
+    else:
+        print(f"[INFO] No checkpoint found at {ckpt_path}. Training from scratch.")
+
+    # If you have dropout inside model and want pure overfit:
+    # try to disable it (depends on your implementation)
+    if hasattr(model, "dropout") and isinstance(model.dropout, nn.Dropout2d):
+        model.dropout.p = 0.0
+        print("[INFO] Disabled model.dropout (p=0.0) for overfit test.")
+
+    # Dataset subset
+    full_ds = build_full_train_dataset()
+    indices = list(range(cfg.subset_size))  # أول 10 صور
+    # ممكن بدل أول 10: random sample (لكن خليك ثابت في الأول)
+    ds10 = Subset(full_ds, indices)
+
     loader = DataLoader(
-        tiny_ds,
-        batch_size=batch_size,
-        shuffle=True,          # مهم عشان يلف عليهم بترتيب مختلف
-        num_workers=num_workers,
-        pin_memory=pin,
-        drop_last=True if overfit_n >= batch_size else False,
+        ds10,
+        batch_size=cfg.batch_size,
+        shuffle=True,
+        num_workers=cfg.num_workers,
+        pin_memory=(cfg.pin_memory and device == "cuda"),
+        drop_last=False,
     )
 
-    num_classes = 1
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.0)
-    cls_criterion = nn.CrossEntropyLoss()
-    mask_criterion = nn.BCEWithLogitsLoss()
-    scaler = GradScaler(enabled=(device == "cuda"))
+    # Optim
+    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+    scaler = GradScaler(enabled=(cfg.use_amp and device == "cuda"))
+    bce_logits_crit = nn.BCEWithLogitsLoss()
 
-    logging.info(f"Overfitting on N={overfit_n} samples, epochs={num_epochs}, bs={batch_size}, lr={lr}")
+    best_dice = -1.0
 
-    for epoch in range(1, num_epochs + 1):
+    for epoch in range(1, cfg.epochs + 1):
         model.train()
-        t0 = time.time()
 
-        total_loss = 0.0
-        total_cls = 0.0
-        total_mask = 0.0
-        total_dice = 0.0
-        total_iou = 0.0
+        loss_sum = 0.0
+        bce_sum = 0.0
+        diceL_sum = 0.0
+        dice_s_sum = 0.0
         n_batches = 0
 
-        for imgs, masks in loader:
-            loss, cls_loss, mask_loss = train_step(
-                model, imgs, masks,
-                optimizer, cls_criterion, mask_criterion,
-                num_classes, device, scaler
-            )
+        for batch in loader:
+            images, target_masks = batch
+            images = images.to(device, non_blocking=True)
+            target_masks = target_masks.to(device, non_blocking=True)
 
-            total_loss += loss.item()
-            total_cls += cls_loss.item()
-            total_mask += mask_loss.item()
+            optimizer.zero_grad(set_to_none=True)
 
-            # metric على نفس الباتش (للتشخيص فقط)
+            with autocast(dtype=torch.float16, enabled=(cfg.use_amp and device == "cuda")):
+                mask_logits = model(images)
+                loss, bce, diceL, probs = compute_loss(mask_logits, target_masks, bce_logits_crit, cfg)
+
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+
             with torch.no_grad():
-                imgs_d = imgs.to(device, non_blocking=True)
-                if masks.dim() == 4:
-                    if masks.size(1) == 1:
-                        masks_d = masks.squeeze(1)
-                    else:
-                        masks_d = masks[:, 0, :, :]
-                else:
-                    masks_d = masks
-                masks_d = masks_d.to(device, non_blocking=True)
+                if probs.dim() == 3:
+                    probs = probs.unsqueeze(1)
+                if target_masks.dim() == 3:
+                    target_masks = target_masks.unsqueeze(1)
+                dice_s = dice_score_from_probs(probs, target_masks, thresh=cfg.thresh)
 
-                with autocast(dtype=torch.float16, enabled=(device == "cuda")):
-                    pred_logits, pred_masks = model(imgs_d)
-                    B, Q, C1 = pred_logits.shape
-                    _, _, H, W = pred_masks.shape
-                    target_masks = torch.zeros((B, Q, H, W), dtype=torch.float32, device=device)
-                    target_masks[:, 0] = masks_d
-
-                dice, iou = hard_dice_iou_from_logits(pred_masks, target_masks, thr=0.5)
-                total_dice += dice
-                total_iou += iou
-
+            loss_sum += float(loss.item())
+            bce_sum += bce
+            diceL_sum += diceL
+            dice_s_sum += float(dice_s)
             n_batches += 1
 
-        avg_loss = total_loss / max(1, n_batches)
-        avg_cls = total_cls / max(1, n_batches)
-        avg_mask = total_mask / max(1, n_batches)
-        avg_dice = total_dice / max(1, n_batches)
-        avg_iou = total_iou / max(1, n_batches)
+        avg_loss = loss_sum / max(1, n_batches)
+        avg_bce = bce_sum / max(1, n_batches)
+        avg_diceL = diceL_sum / max(1, n_batches)
+        avg_dice = dice_s_sum / max(1, n_batches)
 
-        dt = time.time() - t0
-        msg = (
-            f"[Epoch {epoch}/{num_epochs}] "
-            f"loss={avg_loss:.4f} (cls={avg_cls:.4f}, mask={avg_mask:.4f}) "
-            f"dice@0.5={avg_dice:.4f} iou@0.5={avg_iou:.4f} "
-            f"time={dt:.2f}s"
-        )
-        print(msg)
-        logging.info(msg)
+        if avg_dice > best_dice:
+            best_dice = avg_dice
 
-        # وقف بدري لو وصلنا حفظ واضح
-        if avg_dice > 0.98 and avg_iou > 0.95:
-            logging.info("Early stop: reached near-perfect overfit.")
+        print(f"[OVERFIT E{epoch:04d}] loss={avg_loss:.4f} bce={avg_bce:.4f} diceL={avg_diceL:.4f} dice@{cfg.thresh:.2f}={avg_dice:.4f} (best={best_dice:.4f})")
+
+        # Save debug images occasionally
+        if (epoch % cfg.save_every == 0) or (avg_dice > 0.98):
+            model.eval()
+            with torch.no_grad():
+                images, target_masks = next(iter(loader))
+                images = images.to(device, non_blocking=True)
+                target_masks = target_masks.to(device, non_blocking=True)
+                with autocast(dtype=torch.float16, enabled=(cfg.use_amp and device == "cuda")):
+                    logits = model(images)
+                    probs = torch.sigmoid(logits)
+            save_debug_batch(images, target_masks, probs, epoch, cfg)
+
+        # Early stop if perfect-ish
+        if avg_dice >= 0.99:
+            torch.save(model.state_dict(), "overfit_debug_model.pt")
+            print("[INFO] Reached dice >= 0.99 on 10 samples. Overfit test PASSED.")
             break
 
-    return model
+    print(f"[DONE] best_dice={best_dice:.4f}, debug_dir={cfg.out_dir}")
 
 if __name__ == "__main__":
     torch.multiprocessing.set_start_method("spawn", force=True)
-
-    model = HybirdSegmentationAlgorithm(num_classes=1, net_type="21")
-    overfit_p3m_memmap(
-        model,
-        overfit_n=16,
-        num_epochs=400,
-        batch_size=8,
-        lr=3e-4,
-        num_workers=0,
-        seed=123,
-    )
+    main()

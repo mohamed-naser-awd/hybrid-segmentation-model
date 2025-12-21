@@ -5,7 +5,6 @@ from dataclasses import dataclass
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
-from torch.cuda.amp import autocast, GradScaler
 
 from network import HybirdSegmentationAlgorithm
 from dataset import P3MMemmapDataset
@@ -24,12 +23,13 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
+
 # ==========================
 # Config
 # ==========================
 @dataclass
 class TrainConfig:
-    epochs: int = 20
+    epochs: int = 30
     batch_size: int = 10
     lr: float = 2e-4
     weight_decay: float = 1e-4
@@ -37,7 +37,10 @@ class TrainConfig:
     pin_memory: bool = True
     log_every: int = 100
     ckpt_dir: str = "checkpoints"
-    use_amp: bool = True
+
+    # FP32 only
+    use_amp: bool = False
+
     bce_weight: float = 1.0
     dice_weight: float = 1.0
     dice_smooth: float = 1.0
@@ -51,8 +54,19 @@ def dice_loss_from_probs(
     targets: torch.Tensor,
     smooth: float = 1.0,
 ) -> torch.Tensor:
+    # flatten per-sample
     probs = probs.flatten(1)
     targets = targets.flatten(1)
+
+    # samples that actually contain foreground
+    has_fg = targets.sum(dim=1) > 0
+
+    # لو كل الباتش فاضي، نرجع صفر (ما نكافئش التصفير)
+    if not has_fg.any():
+        return probs.new_tensor(0.0)
+
+    probs = probs[has_fg]
+    targets = targets[has_fg]
 
     intersection = (probs * targets).sum(dim=1)
     union = probs.sum(dim=1) + targets.sum(dim=1)
@@ -72,10 +86,26 @@ def dice_score_from_probs(
     preds = preds.flatten(1)
     targets = targets.flatten(1)
 
-    intersection = (preds * targets).sum(dim=1)
-    union = preds.sum(dim=1) + targets.sum(dim=1)
+    pred_sum = preds.sum(dim=1)
+    target_sum = targets.sum(dim=1)
 
-    dice = (2.0 * intersection + 1.0) / (union + 1.0 + 1e-7)
+    intersection = (preds * targets).sum(dim=1)
+    union = pred_sum + target_sum
+
+    dice = torch.zeros_like(union)
+
+    # case 1: GT empty & pred empty -> perfect
+    both_empty = (target_sum == 0) & (pred_sum == 0)
+    dice[both_empty] = 1.0
+
+    # case 2: GT empty & pred non-empty -> wrong
+    gt_empty_pred_non = (target_sum == 0) & (pred_sum > 0)
+    dice[gt_empty_pred_non] = 0.0
+
+    # case 3: normal case
+    normal = target_sum > 0
+    dice[normal] = (2.0 * intersection[normal] + 1.0) / (union[normal] + 1.0 + 1e-7)
+
     return float(dice.mean().item())
 
 
@@ -91,6 +121,7 @@ def compute_loss(
     if target_masks.dim() == 3:
         target_masks = target_masks.unsqueeze(1)
 
+    # target_masks already binarized & float before calling compute_loss
     target_masks = target_masks.float()
 
     # BCE on logits (stable)
@@ -118,7 +149,6 @@ def build_optimizer(model: nn.Module, cfg: TrainConfig):
 def save_checkpoint(
     model: nn.Module,
     optimizer: torch.optim.Optimizer,
-    scaler: GradScaler,
     epoch: int,
     cfg: TrainConfig,
 ):
@@ -129,7 +159,7 @@ def save_checkpoint(
             "epoch": epoch,
             "model": model.state_dict(),
             "optimizer": optimizer.state_dict(),
-            "scaler": scaler.state_dict(),
+            # no scaler in FP32 mode
         },
         path,
     )
@@ -137,23 +167,28 @@ def save_checkpoint(
 
 
 # ==========================
-# Train / Val Steps
+# Train / Val Steps (FP32 only)
 # ==========================
-def train_batch(model, batch, optimizer, scaler, bce_logits_crit, cfg: TrainConfig):
+def train_batch(model, batch, optimizer, bce_logits_crit, cfg: TrainConfig):
     model.train()
     images, target_masks = batch
-    images = images.to(device, non_blocking=True)
+
+    # Force FP32
+    images = images.to(device, non_blocking=True).float()
+
+    # Force masks to {0,1} float32
     target_masks = target_masks.to(device, non_blocking=True)
+    target_masks = (target_masks > 0).float()
 
     optimizer.zero_grad(set_to_none=True)
 
-    with autocast(dtype=torch.float16, enabled=(cfg.use_amp and device == "cuda")):
-        mask_logits = model(images)  # [B,1,H,W] logits
-        loss, bce, dice, probs = compute_loss(mask_logits, target_masks, bce_logits_crit, cfg)
+    mask_logits = model(images)  # logits FP32
+    loss, bce, dice, probs = compute_loss(
+        mask_logits, target_masks, bce_logits_crit, cfg
+    )
 
-    scaler.scale(loss).backward()
-    scaler.step(optimizer)
-    scaler.update()
+    loss.backward()
+    optimizer.step()
 
     with torch.no_grad():
         if probs.dim() == 3:
@@ -169,12 +204,14 @@ def train_batch(model, batch, optimizer, scaler, bce_logits_crit, cfg: TrainConf
 def val_batch(model, batch, bce_logits_crit, cfg: TrainConfig):
     model.eval()
     images, target_masks = batch
-    images = images.to(device, non_blocking=True)
-    target_masks = target_masks.to(device, non_blocking=True)
 
-    with autocast(dtype=torch.float16, enabled=(cfg.use_amp and device == "cuda")):
-        mask_logits = model(images)
-        loss, bce, dice, probs = compute_loss(mask_logits, target_masks, bce_logits_crit, cfg)
+    images = images.to(device, non_blocking=True).float()
+    target_masks = (target_masks.to(device, non_blocking=True) > 0).float()
+
+    mask_logits = model(images)
+    loss, bce, dice, probs = compute_loss(
+        mask_logits, target_masks, bce_logits_crit, cfg
+    )
 
     if probs.dim() == 3:
         probs = probs.unsqueeze(1)
@@ -188,14 +225,14 @@ def val_batch(model, batch, bce_logits_crit, cfg: TrainConfig):
 # ==========================
 # Epochs
 # ==========================
-def train_epoch(model, loader, optimizer, scaler, cfg: TrainConfig, epoch: int):
+def train_epoch(model, loader, optimizer, cfg: TrainConfig, epoch: int):
     bce_logits_crit = nn.BCEWithLogitsLoss()
 
     loss_sum = bce_sum = dice_sum = dice_s_sum = 0.0
 
     for i, batch in enumerate(loader, 1):
         loss, bce, dice, dice_s = train_batch(
-            model, batch, optimizer, scaler, bce_logits_crit, cfg
+            model, batch, optimizer, bce_logits_crit, cfg
         )
 
         loss_sum += loss
@@ -264,11 +301,18 @@ def build_val_dataset():
 def train():
     cfg = TrainConfig()
 
-    model = HybirdSegmentationAlgorithm(
-        num_classes=1,
-        query_count=1,  # مهم: semantic mask واحدة
-        d_model=192,
-    ).to(device)
+    model = (
+        HybirdSegmentationAlgorithm(
+            num_classes=1,
+            query_count=1,  # semantic mask واحدة
+        )
+        .to(device)
+        .float()
+    )  # ⬅️ force FP32 model
+
+    model_path = "checkpoints/epoch_0006.pt"
+    state_dict = torch.load(model_path, map_location=device)
+    model.load_state_dict(state_dict["model"])
 
     train_loader = DataLoader(
         build_train_dataset(),
@@ -288,22 +332,25 @@ def train():
     )
 
     optimizer = build_optimizer(model, cfg)
-    scaler = GradScaler(enabled=(cfg.use_amp and device == "cuda"))
+    optimizer.load_state_dict(state_dict["optimizer"])
 
     best_dice = 0.0
+    try:
+        epoch_start = state_dict["epoch"]
+    except:
+        epoch_start = 0
 
-    for epoch in range(1, cfg.epochs + 1):
+    for epoch in range(epoch_start + 1, cfg.epochs + 1):
         logging.info(f"Epoch {epoch} started")
-        train_epoch(model, train_loader, optimizer, scaler, cfg, epoch)
+        train_epoch(model, train_loader, optimizer, cfg, epoch)
         logging.info(f"Epoch {epoch} training completed")
 
         logging.info(f"Epoch {epoch} validation started")
         val_dice = val_epoch(model, val_loader, cfg, epoch)
         logging.info(f"Epoch {epoch} validation completed")
 
-        # if val_dice > best_dice:
         best_dice = val_dice
-        save_checkpoint(model, optimizer, scaler, epoch, cfg)
+        save_checkpoint(model, optimizer, epoch, cfg)
         logging.info(f"New BEST dice@0.5 = {best_dice:.4f}")
 
 
