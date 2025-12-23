@@ -1,33 +1,21 @@
-from backbone import DarkNet
-from decoder import Decoder
+from backbone import DarkNet, ConvBlock
+from decoder import UNetDecoderClassic
 from torch import nn, Tensor
-from torch.nn import functional as F
 from utils import profile_block
 
 
-class HybirdSegmentationAlgorithm(nn.Module):
-    def __init__(
-        self,
-        num_classes: int,
-        net_type: str = "21",
-        *args,
-        query_count: int = 1,
-        **kwargs
-    ) -> None:
+class SemanticSegmentationModel(nn.Module):
+    """
+    Human Semantic Segmentation Model
+    """
+
+    def __init__(self, net_type: str = "21", *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.backbone = DarkNet(net_type=net_type)
-        self.decoder = Decoder()
+        self.decoder = UNetDecoderClassic()
         self.mask_head = nn.Sequential(
-            nn.Conv2d(32, 64, 3, padding=1, bias=False),
-            nn.BatchNorm2d(64),
-            nn.Relu(inplace=True),
-            nn.Conv2d(64, 32, 3, padding=1, bias=False),
-            nn.BatchNorm2d(32),
-            nn.Relu(inplace=True),
-            nn.Conv2d(32, 16, 3, padding=1, bias=False),
-            nn.BatchNorm2d(16),
-            nn.Relu(inplace=True),
-            nn.Conv2d(16, 1, 1),
+            ConvBlock(32, 16, kernel_size=3, padding=1),
+            ConvBlock(16, 1, kernel_size=3, padding=1),
         )
 
     def forward(self, image: Tensor):

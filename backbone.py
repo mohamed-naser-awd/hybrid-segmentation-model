@@ -24,7 +24,7 @@ class ConvBlock(nn.Module):
             stride=stride,
         )
         self.bn = nn.BatchNorm2d(out_channels)
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.ReLU()
 
     def forward(self, x):
         return self.relu(self.bn(self.conv(x)))
@@ -34,12 +34,11 @@ class ResidualBlock(nn.Module):
     def __init__(self, in_channels, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
-        self.residual = ConvBlock(in_channels, in_channels, kernel_size=3, padding=1)
-        self.conv1 = ConvBlock(in_channels, in_channels // 2)
-        self.conv2 = ConvBlock(in_channels // 2, in_channels)
+        self.conv1 = ConvBlock(in_channels, in_channels // 2, kernel_size=1)
+        self.conv2 = ConvBlock(in_channels // 2, in_channels, padding=1)
 
     def forward(self, x):
-        residual = self.residual(x)
+        residual = x
         x = self.conv1(x)
         x = self.conv2(x)
         return residual + x
@@ -66,23 +65,29 @@ class DarkNet(nn.Module):
         super().__init__(*args, **kwargs)
 
         self.stem = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
+            ConvBlock(3, 32, kernel_size=3, padding=1),
         )
 
         stage_block_mapper = {
-            "18": {"4": 2, "5": 1},
-            "21": {"4": 2, "5": 2},
-            "24": {"4": 2, "5": 3},
-            "53": {"2": 2, "3": 8, "4": 8, "5": 4},  # DarkNet-53 (YOLOv3-style)
+            "18": {"2": 1, "3": 2, "4": 2, "5": 1},
+            "21": {"2": 1, "3": 2, "4": 2, "5": 2},
+            "24": {"2": 1, "3": 2, "4": 2, "5": 3},
+            "34": {"2": 2, "3": 3, "4": 4, "5": 2},
+            "50": {"2": 2, "3": 4, "4": 6, "5": 2},
+            "53": {"2": 2, "3": 8, "4": 8, "5": 4},
         }
 
-        self.c1 = ResidualStage(1, 32, 64)
-        self.c2 = ResidualStage(stage_block_mapper[net_type].get("2", 1), 64, 128)
-        self.c3 = ResidualStage(stage_block_mapper[net_type].get("3", 2), 128, 256)
-        self.c4 = ResidualStage(stage_block_mapper[net_type]["4"], 256, 512)
-        self.c5 = ResidualStage(stage_block_mapper[net_type]["5"], 512, 1024)
+        c1_blocks_count = stage_block_mapper[net_type].get("1", 1)
+        c2_blocks_count = stage_block_mapper[net_type].get("2", 1)
+        c3_blocks_count = stage_block_mapper[net_type].get("3", 2)
+        c4_blocks_count = stage_block_mapper[net_type].get("4", 2)
+        c5_blocks_count = stage_block_mapper[net_type].get("5", 2)
+
+        self.c1 = ResidualStage(c1_blocks_count, 32, 64)
+        self.c2 = ResidualStage(c2_blocks_count, 64, 128)
+        self.c3 = ResidualStage(c3_blocks_count, 128, 256)
+        self.c4 = ResidualStage(c4_blocks_count, 256, 512)
+        self.c5 = ResidualStage(c5_blocks_count, 512, 1024)
 
     def forward(self, image):
         x = profile_block("stem", self.stem, image)

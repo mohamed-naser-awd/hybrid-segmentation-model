@@ -6,8 +6,9 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
-from network import HybirdSegmentationAlgorithm
-from dataset import P3MMemmapDataset
+from network import SemanticSegmentationModel
+from dataset import P3MMemmapDataset, MixedSegmentationDataset
+
 
 # ==========================
 # Device
@@ -280,10 +281,26 @@ def val_epoch(model, loader, cfg: TrainConfig, epoch: int):
 # Datasets
 # ==========================
 def build_train_dataset():
-    return P3MMemmapDataset(
-        mmap_path="dataset/train_640_fp16_images.mmap",
-        mask_mmap_path="dataset/train_640_fp16_masks.mmap",
-        N=20392,
+    positive_dataset_size = 12088
+    negative_dataset_size = 8304
+
+    positive_dataset = P3MMemmapDataset(
+        "dataset/train_640_fp16_images.mmap",
+        "dataset/train_640_fp16_masks.mmap",
+        positive_dataset_size,
+    )
+
+    negative_dataset = P3MMemmapDataset(
+        "dataset/train_640_fp16_negative_images.mmap",
+        "dataset/train_640_fp16_negative_masks.mmap",
+        negative_dataset_size,
+    )
+
+    return MixedSegmentationDataset(
+        pos_dataset=positive_dataset,
+        neg_dataset=negative_dataset,
+        pos_ratio=0.9,      # عدلها براحتك (0.5 / 0.7 / ...)
+        length=20392,       # نفس الرقم اللي كنت مستعمله
     )
 
 
@@ -301,18 +318,11 @@ def build_val_dataset():
 def train():
     cfg = TrainConfig()
 
-    model = (
-        HybirdSegmentationAlgorithm(
-            num_classes=1,
-            query_count=1,  # semantic mask واحدة
-        )
-        .to(device)
-        .float()
-    )  # ⬅️ force FP32 model
+    model = SemanticSegmentationModel().to(device).float()  # ⬅️ force FP32 model
 
-    model_path = "checkpoints/epoch_0006.pt"
-    state_dict = torch.load(model_path, map_location=device)
-    model.load_state_dict(state_dict["model"])
+    # model_path = "checkpoints/epoch_0006.pt"
+    # state_dict = torch.load(model_path, map_location=device)
+    # model.load_state_dict(state_dict["model"])
 
     train_loader = DataLoader(
         build_train_dataset(),
@@ -332,13 +342,10 @@ def train():
     )
 
     optimizer = build_optimizer(model, cfg)
-    optimizer.load_state_dict(state_dict["optimizer"])
+    # optimizer.load_state_dict(state_dict["optimizer"])
 
     best_dice = 0.0
-    try:
-        epoch_start = state_dict["epoch"]
-    except:
-        epoch_start = 0
+    epoch_start = 0
 
     for epoch in range(epoch_start + 1, cfg.epochs + 1):
         logging.info(f"Epoch {epoch} started")

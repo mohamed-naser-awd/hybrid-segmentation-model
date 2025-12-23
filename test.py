@@ -1,10 +1,9 @@
 import os
-from network import HybirdSegmentationAlgorithm
+from network import SemanticSegmentationModel
 from segement import save_segmented_image
 from set_data_set import parse_image
 from utils import profile_block
 import torch
-import torch.nn.functional as F
 
 
 def test_model_inference(model, image):
@@ -54,7 +53,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # حمّل الموديل
-    model = HybirdSegmentationAlgorithm(
+    model = SemanticSegmentationModel(
         num_classes=1,
         query_count=1,  # مهم: semantic mask واحدة
     ).to(device)

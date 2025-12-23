@@ -7,6 +7,41 @@ import numpy as np
 import os
 from PIL import Image
 from utils import profile_block
+import random
+
+
+class MixedSegmentationDataset(Dataset):
+    def __init__(
+        self,
+        pos_dataset: Dataset,
+        neg_dataset: Dataset,
+        pos_ratio: float = 0.5,
+        length: int | None = None,
+    ):
+        """
+        pos_ratio: نسبة عينات الـ FG
+        length: الطول المنطقي للداتاسيت (لو None هياخد max)
+        """
+        assert 0.0 < pos_ratio < 1.0
+
+        self.pos_ds = pos_dataset
+        self.neg_ds = neg_dataset
+        self.pos_ratio = pos_ratio
+
+        self.length = length or max(len(pos_dataset), len(neg_dataset))
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, idx):
+        use_pos = random.random() < self.pos_ratio
+
+        if use_pos:
+            real_idx = idx % len(self.pos_ds)
+            return self.pos_ds[real_idx]
+        else:
+            real_idx = idx % len(self.neg_ds)
+            return self.neg_ds[real_idx]
 
 
 class P3M10kDataset(Dataset):
@@ -46,6 +81,7 @@ class P3M10kDataset(Dataset):
         return self.get_image(idx)
         return profile_block("get p3m10k item", self.get_image, idx)
 
+
 class P3MMemmapDataset(Dataset):
     def __init__(self, mmap_path, mask_mmap_path, N=None):
         self.mmap_path = mmap_path
@@ -61,6 +97,8 @@ class P3MMemmapDataset(Dataset):
         H = W = 640
 
         if self.imgs is None:
+            print(f"images path: {self.mmap_path}, masks path: {self.mask_mmap_path}")
+            print(f"images shape: {N}, {C}, {H}, {W}")
             self.imgs = np.memmap(
                 self.mmap_path,
                 dtype="float16",
