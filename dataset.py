@@ -97,8 +97,6 @@ class P3MMemmapDataset(Dataset):
         H = W = 640
 
         if self.imgs is None:
-            print(f"images path: {self.mmap_path}, masks path: {self.mask_mmap_path}")
-            print(f"images shape: {N}, {C}, {H}, {W}")
             self.imgs = np.memmap(
                 self.mmap_path,
                 dtype="float16",
@@ -106,8 +104,6 @@ class P3MMemmapDataset(Dataset):
                 shape=(N, C, H, W),
             )
 
-            print(f"images path: {self.mmap_path}")
-            print(f"masks path: {self.mask_mmap_path}")
 
             self.masks = np.memmap(
                 self.mask_mmap_path,

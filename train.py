@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 
 from network import SemanticSegmentationModel
 from dataset import P3MMemmapDataset, MixedSegmentationDataset
+from utils import profile_block
 
 
 # ==========================
@@ -31,13 +32,14 @@ logging.basicConfig(
 @dataclass
 class TrainConfig:
     epochs: int = 30
-    batch_size: int = 10
-    lr: float = 2e-4
+    batch_size: int = 50
+    lr: float = 2e-3
     weight_decay: float = 1e-4
     num_workers: int = 0
     pin_memory: bool = True
-    log_every: int = 100
+    log_every: int = 20
     ckpt_dir: str = "checkpoints"
+    disable_backbone_training: bool = True
 
     # FP32 only
     use_amp: bool = False
@@ -140,11 +142,14 @@ def compute_loss(
 # Optim / Checkpoint
 # ==========================
 def build_optimizer(model: nn.Module, cfg: TrainConfig):
-    return torch.optim.AdamW(
-        model.parameters(),
-        lr=cfg.lr,
-        weight_decay=cfg.weight_decay,
+    if cfg.disable_backbone_training:
+        trainable_params = [p for p in model.parameters() if p.requires_grad]
+    else:
+        trainable_params = model.parameters()
+    optimizer = torch.optim.AdamW(
+        trainable_params, lr=cfg.lr, weight_decay=cfg.weight_decay
     )
+    return optimizer
 
 
 def save_checkpoint(
@@ -183,13 +188,11 @@ def train_batch(model, batch, optimizer, bce_logits_crit, cfg: TrainConfig):
 
     optimizer.zero_grad(set_to_none=True)
 
-    mask_logits = model(images)  # logits FP32
-    loss, bce, dice, probs = compute_loss(
-        mask_logits, target_masks, bce_logits_crit, cfg
-    )
+    mask_logits = profile_block("model", model, images)  # logits FP32
+    loss, bce, dice, probs = profile_block("compute_loss", compute_loss, mask_logits, target_masks, bce_logits_crit, cfg)
 
-    loss.backward()
-    optimizer.step()
+    profile_block("backward", loss.backward)
+    profile_block("optimizer", optimizer.step)
 
     with torch.no_grad():
         if probs.dim() == 3:
@@ -232,9 +235,7 @@ def train_epoch(model, loader, optimizer, cfg: TrainConfig, epoch: int):
     loss_sum = bce_sum = dice_sum = dice_s_sum = 0.0
 
     for i, batch in enumerate(loader, 1):
-        loss, bce, dice, dice_s = train_batch(
-            model, batch, optimizer, bce_logits_crit, cfg
-        )
+        loss, bce, dice, dice_s = profile_block("train_batch", train_batch, model, batch, optimizer, bce_logits_crit, cfg)
 
         loss_sum += loss
         bce_sum += bce
@@ -299,8 +300,8 @@ def build_train_dataset():
     return MixedSegmentationDataset(
         pos_dataset=positive_dataset,
         neg_dataset=negative_dataset,
-        pos_ratio=0.9,      # عدلها براحتك (0.5 / 0.7 / ...)
-        length=20392,       # نفس الرقم اللي كنت مستعمله
+        pos_ratio=0.9,  # عدلها براحتك (0.5 / 0.7 / ...)
+        length=20392,  # نفس الرقم اللي كنت مستعمله
     )
 
 
@@ -319,6 +320,8 @@ def train():
     cfg = TrainConfig()
 
     model = SemanticSegmentationModel().to(device).float()  # ⬅️ force FP32 model
+    if cfg.disable_backbone_training:
+        model.disable_backbone_training()
 
     # model_path = "checkpoints/epoch_0006.pt"
     # state_dict = torch.load(model_path, map_location=device)

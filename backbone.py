@@ -11,11 +11,13 @@ class ConvBlock(nn.Module):
         kernel_size=3,
         padding=0,
         stride=1,
+        is_transposed=False,
         *args,
         **kwargs
     ) -> None:
         super().__init__(*args, **kwargs)
-        self.conv = nn.Conv2d(
+        conv_class = nn.ConvTranspose2d if is_transposed else nn.Conv2d
+        self.conv = conv_class(
             in_channels,
             out_channels,
             kernel_size=kernel_size,

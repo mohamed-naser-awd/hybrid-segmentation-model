@@ -48,7 +48,7 @@ class UNetDecoderClassic(nn.Module):
     Returns the last feature map (64 channels). You can add a 1x1 head outside.
     """
 
-    def __init__(self, use_transpose: bool = True):
+    def __init__(self):
         super().__init__()
 
         self.up5 = nn.ConvTranspose2d(1024, 512, kernel_size=2, stride=2)
@@ -97,15 +97,3 @@ class UNetDecoderClassic(nn.Module):
 
         return self.up1(x)
 
-
-class UNetHead(nn.Module):
-    """
-    Segmentation head (logits). For binary mask use out_ch=1.
-    """
-
-    def __init__(self, in_ch: int = 64, out_ch: int = 1):
-        super().__init__()
-        self.proj = nn.Conv2d(in_ch, out_ch, kernel_size=1)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.proj(x)

@@ -53,10 +53,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # حمّل الموديل
-    model = SemanticSegmentationModel(
-        num_classes=1,
-        query_count=1,  # مهم: semantic mask واحدة
-    ).to(device)
+    model = SemanticSegmentationModel().to(device)
     state_dict = torch.load("model.pt", map_location=device)
     model.load_state_dict(state_dict["model"])
     model.eval()
