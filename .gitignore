@@ -10,3 +10,6 @@ wenv
 dataset
 images
 *.logs
+saved_models
+checkpoints
+*.log
