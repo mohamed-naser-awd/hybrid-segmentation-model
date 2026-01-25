@@ -4,9 +4,6 @@ import numpy as np
 from data.augumentation import color_augment, horizontal_flip, random_crop
 
 
-import torch.nn.functional as F
-
-
 class P3MMemmapDataset(Dataset):
     def __init__(
         self, mmap_path, mask_mmap_path, N=None, training=True, height=640, width=640

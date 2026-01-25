@@ -29,9 +29,9 @@ class UNET(nn.Module):
     ):
         super(UNET, self).__init__()
 
-        device = get_device()
-        self.mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1).to(device)
-        self.std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1).to(device)
+        self.device = get_device()
+        self.mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1).to(self.device)
+        self.std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1).to(self.device)
 
         self.ups = nn.ModuleList()
         self.downs = nn.ModuleList()

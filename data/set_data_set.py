@@ -1,3 +1,9 @@
+import pathlib
+BASE_DIR = pathlib.Path(__file__).parent.parent
+
+import sys
+sys.path.insert(0, str(BASE_DIR))
+
 import os
 from PIL import Image
 import numpy as np
@@ -5,6 +11,7 @@ import torchvision.transforms.functional as TF
 import torch
 from tqdm import tqdm
 from models import BiRefNetTeacher
+
 
 # Option 1: BiRefNet (SOTA for high-resolution segmentation)
 # pip install birefnet
@@ -110,8 +117,8 @@ if __name__ == "__main__":
     teacher = BiRefNetTeacher(device=device)
 
     positive_folders = [
-        "dataset/P3M-10k/train/blurred_image",
-        "dataset/supervisely_person_clean_2667_img/supervisely_person_clean_2667_img/images",
+        BASE_DIR / "dataset" / "P3M-10k" / "train" / "blurred_image",
+        BASE_DIR / "dataset" / "supervisely_person_clean_2667_img" / "supervisely_person_clean_2667_img" / "images",
     ]
 
     positive_images = get_image_paths(positive_folders)
@@ -120,7 +127,7 @@ if __name__ == "__main__":
     # Generate soft labels
     create_memmap_with_teacher(
         images=positive_images,
-        mmap_path="dataset/train_640_fp16_soft_masks.mmap",
+        mmap_path=BASE_DIR / "dataset" / "train_640_fp16_soft_masks.mmap",
         teacher=teacher,
         size=SIZE,
     )
@@ -128,7 +135,7 @@ if __name__ == "__main__":
     # Save images
     create_memmap_images(
         images=positive_images,
-        mmap_path="dataset/train_640_fp16_images.mmap",
+        mmap_path=BASE_DIR / "dataset" / "train_640_fp16_images.mmap",
         channels=3,
         size=SIZE,
     )

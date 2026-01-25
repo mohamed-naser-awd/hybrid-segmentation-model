@@ -3,7 +3,7 @@ import torchvision.transforms.functional as TF
 from segement import save_segmented_image
 from utils import profile_block, pad_to_valid_size
 import torch
-from models import UltraFastNet as Model, BiRefNetTeacher
+from models import UNET as Model, BiRefNetTeacher
 
 import cv2
 import logging
@@ -18,8 +18,11 @@ def test_model_inference(model, image):
     - يشغّل الموديل
     - يطبّق segment_all_objects
     """
-    logits = model.predict_soft_mask(image)
-    # return logits
+    if hasattr(model, "predict_soft_mask"):
+        logits = model.predict_soft_mask(image)
+    else:
+        logits = model(image.to(model.device))
+
     return torch.sigmoid(logits)
 
 
@@ -78,13 +81,10 @@ def test_model(img_path: str, save_path: str = "test_output"):
 
     image_name = img_path.split("/")[-1]
     filename = f"{image_name.split('.')[0]}.png"
-    input_save_path = os.path.join(save_path, filename)
-    save_segmented_image(segmented_image, input_save_path)
-    save_segmented_image(
-        image, os.path.join(save_path, f"{image_name}_original_padded.jpg")
-    )
+    output_save_path = os.path.join(save_path, filename)
+    save_segmented_image(segmented_image, output_save_path)
     print(
-        f"Segmented image saved to {input_save_path} and {os.path.join(save_path, f"{image_name}_original_padded.jpg")}"
+        f"Segmented image saved to {output_save_path} and {os.path.join(save_path, f"{image_name}_original_padded.jpg")}"
     )
 
 
@@ -94,12 +94,14 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # حمّل الموديل
-    model = BiRefNetTeacher(device=device)
+    model = Model()
+    checkpoint = torch.load("checkpoints_distill/distill_epoch_024.pt")
+    model.load_state_dict(checkpoint["model"])
+    model = model.to(model.device)
+
     if hasattr(model, "eval"):
         model.eval()
 
-    # checkpoint = torch.load("checkpoints_distill/distill_epoch_027.pt")
-    # model.load_state_dict(checkpoint["model"])
 
     for image in os.listdir("images"):
         img_path = os.path.join("images", image)

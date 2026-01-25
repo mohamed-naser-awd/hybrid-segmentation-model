@@ -32,7 +32,7 @@ logging.basicConfig(
 class DistillationConfig:
     # Training
     epochs: int = 30
-    batch_size: int = 6
+    batch_size: int = 12
     lr: float = 1e-3
     weight_decay: float = 1e-4
 
